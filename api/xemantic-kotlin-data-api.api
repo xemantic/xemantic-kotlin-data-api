@@ -1,0 +1,10 @@
+public final class com/xemantic/kotlin/data/api/Foo {
+	public static final field BAR Ljava/lang/String;
+	public static final field INSTANCE Lcom/xemantic/kotlin/data/api/Foo;
+}
+
+public final class com/xemantic/kotlin/data/api/HelloWorldKt {
+	public static final fun main ()V
+	public static synthetic fun main ([Ljava/lang/String;)V
+}
+

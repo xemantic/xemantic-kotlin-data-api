@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-// TODO replace with your package
-package com.xemantic.template.kotlin.multiplatform
+package com.xemantic.kotlin.data.api
 
 import com.xemantic.kotlin.test.have
 import com.xemantic.kotlin.test.should

@@ -7,8 +7,6 @@ asm = "9.9.1"
 
 xemanticKotlinTest = "1.17.2"
 
-# TODO put your dependencies here
-
 versionsPlugin = "0.53.0"
 dokkaPlugin = "2.1.0"
 mavenPublishPlugin = "0.36.0"
