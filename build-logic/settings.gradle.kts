@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Kazimierz Pogoda / Xemantic
+ * Copyright 2025-2026 Kazimierz Pogoda / Xemantic
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,12 @@
  * limitations under the License.
  */
 
-pluginManagement {
-    includeBuild("build-logic")
+dependencyResolutionManagement {
+    versionCatalogs {
+        create("libs") {
+            from(files("../gradle/libs.versions.toml"))
+        }
+    }
 }
 
-rootProject.name = "xemantic-kotlin-data-api"
-
-include(
-    ":xemantic-kotlin-data-api-annotations",
-    ":xemantic-kotlin-data-api-compiler-plugin",
-    ":xemantic-kotlin-data-api-gradle-plugin",
-    ":xemantic-kotlin-data-api-test",
-)
+rootProject.name = "build-logic"

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Kazimierz Pogoda / Xemantic
+ * Copyright 2026 Kazimierz Pogoda / Xemantic
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,13 +14,21 @@
  * limitations under the License.
  */
 
-package com.xemantic.kotlin.data.api
+package com.xemantic.kotlin.data.api.test
 
-// TODO replace with your code
-public object Foo {
-    public const val BAR: String = "buzz"
-}
+import com.xemantic.kotlin.data.api.DataApi
 
-public fun main() {
-    print("Hello World!")
+/**
+ * A sample `@DataApi` class with a secondary constructor, used to assert that constructor
+ * privatization covers *every* constructor: a secondary one left public would hand external
+ * callers a construction path bypassing the builder's required-property validation.
+ */
+@DataApi
+class Session(
+    val id: String,
+    val user: String?
+) {
+
+    constructor() : this("anonymous", null)
+
 }

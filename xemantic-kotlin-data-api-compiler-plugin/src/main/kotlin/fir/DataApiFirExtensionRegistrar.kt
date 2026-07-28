@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Kazimierz Pogoda / Xemantic
+ * Copyright 2025-2026 Kazimierz Pogoda / Xemantic
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,20 @@
  * limitations under the License.
  */
 
-pluginManagement {
-    includeBuild("build-logic")
+package com.xemantic.kotlin.data.api.compiler.fir
+
+import org.jetbrains.kotlin.fir.extensions.FirExtensionRegistrar
+
+/**
+ * Wires the FIR (frontend) extensions of the `@DataApi` plugin.
+ */
+class DataApiFirExtensionRegistrar : FirExtensionRegistrar() {
+
+    override fun ExtensionRegistrarContext.configurePlugin() {
+        +::DataApiStatusTransformer
+        +::DataApiBuilderGenerator
+        +::DataApiCheckersExtension
+        registerDiagnosticContainers(DataApiErrors)
+    }
+
 }
-
-rootProject.name = "xemantic-kotlin-data-api"
-
-include(
-    ":xemantic-kotlin-data-api-annotations",
-    ":xemantic-kotlin-data-api-compiler-plugin",
-    ":xemantic-kotlin-data-api-gradle-plugin",
-    ":xemantic-kotlin-data-api-test",
-)

@@ -14,15 +14,16 @@
  * limitations under the License.
  */
 
-pluginManagement {
-    includeBuild("build-logic")
-}
+package com.xemantic.kotlin.data.api.test
 
-rootProject.name = "xemantic-kotlin-data-api"
+import com.xemantic.kotlin.data.api.DataApi
 
-include(
-    ":xemantic-kotlin-data-api-annotations",
-    ":xemantic-kotlin-data-api-compiler-plugin",
-    ":xemantic-kotlin-data-api-gradle-plugin",
-    ":xemantic-kotlin-data-api-test",
+/**
+ * A sample `@DataApi` class with an array property, whose `hashCode` and `toString` must hash and
+ * render the array by *content* — the way a `data` class does — rather than by identity, which is
+ * what the array's own inherited `hashCode` would give.
+ */
+@DataApi
+class Blob(
+    val data: ByteArray
 )

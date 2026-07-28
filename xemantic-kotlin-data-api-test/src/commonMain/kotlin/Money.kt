@@ -14,15 +14,20 @@
  * limitations under the License.
  */
 
-pluginManagement {
-    includeBuild("build-logic")
+package com.xemantic.kotlin.data.api.test
+
+import com.xemantic.kotlin.data.api.DataApi
+
+/**
+ * A sample `@DataApi` class declaring a *typed* `equals` helper, which is an overload rather than
+ * an override of `Any.equals`. The plugin must still generate `equals(Any?)`: matching a
+ * user-declared `equals` by name and arity alone would leave this class with identity equality.
+ */
+@DataApi
+class Money(
+    val cents: Long
+) {
+
+    fun equals(other: Money): Boolean = cents == other.cents
+
 }
-
-rootProject.name = "xemantic-kotlin-data-api"
-
-include(
-    ":xemantic-kotlin-data-api-annotations",
-    ":xemantic-kotlin-data-api-compiler-plugin",
-    ":xemantic-kotlin-data-api-gradle-plugin",
-    ":xemantic-kotlin-data-api-test",
-)

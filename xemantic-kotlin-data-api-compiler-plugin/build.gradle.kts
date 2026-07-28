@@ -14,15 +14,12 @@
  * limitations under the License.
  */
 
-pluginManagement {
-    includeBuild("build-logic")
+plugins {
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.maven.publish)
+    id("xemantic.data.api.convention")
 }
 
-rootProject.name = "xemantic-kotlin-data-api"
-
-include(
-    ":xemantic-kotlin-data-api-annotations",
-    ":xemantic-kotlin-data-api-compiler-plugin",
-    ":xemantic-kotlin-data-api-gradle-plugin",
-    ":xemantic-kotlin-data-api-test",
-)
+dependencies {
+    compileOnly(libs.kotlin.compiler.embeddable)
+}

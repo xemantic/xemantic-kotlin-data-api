@@ -14,15 +14,24 @@
  * limitations under the License.
  */
 
-pluginManagement {
-    includeBuild("build-logic")
-}
+package com.xemantic.kotlin.data.api.test
 
-rootProject.name = "xemantic-kotlin-data-api"
+import com.xemantic.kotlin.data.api.DataApi
 
-include(
-    ":xemantic-kotlin-data-api-annotations",
-    ":xemantic-kotlin-data-api-compiler-plugin",
-    ":xemantic-kotlin-data-api-gradle-plugin",
-    ":xemantic-kotlin-data-api-test",
+/**
+ * A sample `@DataApi` class whose property type is itself a `@DataApi` class ([Address]), used to
+ * exercise nested builder DSLs: each `@DataApi` type contributes its own `Builder` and companion
+ * `invoke`, so an outer builder property can be assigned via the inner type's `{ }` DSL.
+ */
+@DataApi
+class Company(
+    val name: String,
+    val headquarters: Address,
+    val branch: Address?
+)
+
+@DataApi
+class Address(
+    val street: String,
+    val city: String
 )

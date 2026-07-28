@@ -1,18 +1,33 @@
-@file:OptIn(ExperimentalWasmDsl::class, ExperimentalKotlinGradlePluginApi::class)
+/*
+ * Copyright 2026 Kazimierz Pogoda / Xemantic
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+import com.vanniktech.maven.publish.MavenPublishBaseExtension
+import org.jetbrains.dokka.gradle.DokkaExtension
+import org.jetbrains.dokka.gradle.engine.plugins.DokkaHtmlPluginParameters
 import org.jreleaser.model.Active
 
 plugins {
-    alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.kotlin.plugin.power.assert)
-    alias(libs.plugins.kotlinx.binary.compatibility.validator)
-    alias(libs.plugins.dokka)
+    base
+    alias(libs.plugins.kotlin.multiplatform) apply false
+    alias(libs.plugins.kotlin.jvm) apply false
+    alias(libs.plugins.maven.publish) apply false
+    alias(libs.plugins.dokka) apply false
+    alias(libs.plugins.kotlinx.binary.compatibility.validator) apply false
     alias(libs.plugins.versions)
-    alias(libs.plugins.maven.publish)
+    alias(libs.plugins.version.catalog.update)
     alias(libs.plugins.jreleaser)
     alias(libs.plugins.xemantic.conventions)
 }
@@ -22,7 +37,16 @@ group = "com.xemantic.kotlin"
 xemantic {
     description = "API-friendly data classes for Kotlin"
     inceptionYear = "2026"
-    applyAllConventions()
+    // NOTE: not applyAllConventions() — it includes applyJarManifests(), whose
+    // populateJarManifest eagerly calls archiveBaseName.get() on every Jar task
+    // across allprojects. The Kotlin Multiplatform `allMetadataJar` has no
+    // archiveBaseName, so that crashes the build. Same workaround as in the
+    // multimodule xemantic/markanywhere project: apply the conventions
+    // individually and omit applyJarManifests().
+    applyAxTestReporting()
+    applySignBeforePublishing()
+    applyReportOnlyStableDependencyUpdates()
+    applyJReleaserConventions()
 }
 
 fun MavenPomDeveloperSpec.projectDevs() {
@@ -33,175 +57,96 @@ fun MavenPomDeveloperSpec.projectDevs() {
     }
 }
 
-val javaTarget = libs.versions.javaTarget.get()
-val kotlinTarget = KotlinVersion.fromVersion(libs.versions.kotlinTarget.get())
+// Capture xemantic extension values for use in subprojects
+val projectDescription = xemantic.description
+val projectInceptionYear = xemantic.inceptionYear
+val gitHubAccount = xemantic.gitHubAccount
+val organizationName = xemantic.organization
+val organizationUrl = xemantic.organizationUrl
 
-kotlin {
-
-    explicitApi()
-
-    compilerOptions {
-        apiVersion = kotlinTarget
-        languageVersion = kotlinTarget
-        freeCompilerArgs.addAll(
-            "-Xcontext-parameters",
-            "-Xcontext-sensitive-resolution"
-        )
-        extraWarnings = true
-        progressiveMode = true
-        //optIn.addAll("add opt ins here")
+allprojects {
+    group = "com.xemantic.kotlin"
+    repositories {
+        mavenCentral()
     }
+}
 
-    jvm {
-        // set up according to https://jakewharton.com/gradle-toolchains-are-rarely-a-good-idea/
-        compilerOptions {
-            apiVersion = kotlinTarget
-            languageVersion = kotlinTarget
-            jvmTarget = JvmTarget.fromTarget(javaTarget)
-            freeCompilerArgs.add("-Xjdk-release=$javaTarget")
-            progressiveMode = true
+subprojects {
+
+    plugins.withId("com.vanniktech.maven.publish.base") {
+        configure<MavenPublishBaseExtension> {
+
+            signAllPublications()
+
+            publishToMavenCentral(
+                automaticRelease = true
+            )
+
+            pom {
+
+                name = project.name
+                description = projectDescription
+                inceptionYear = projectInceptionYear
+                url = "https://github.com/${gitHubAccount}/${rootProject.name}"
+
+                organization {
+                    name = organizationName
+                    url = organizationUrl
+                }
+
+                licenses {
+                    license {
+                        name = "The Apache License, Version 2.0"
+                        url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                        distribution = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+
+                scm {
+                    url = "https://github.com/${gitHubAccount}/${rootProject.name}"
+                    connection = "scm:git:git://github.com/${gitHubAccount}/${rootProject.name}.git"
+                    developerConnection = "scm:git:ssh://git@github.com/${gitHubAccount}/${rootProject.name}.git"
+                }
+
+                ciManagement {
+                    system = "GitHub"
+                    url = "https://github.com/${gitHubAccount}/${rootProject.name}/actions"
+                }
+
+                issueManagement {
+                    system = "GitHub"
+                    url = "https://github.com/${gitHubAccount}/${rootProject.name}/issues"
+                }
+
+                developers {
+                    projectDevs()
+                }
+
+            }
+
         }
     }
 
-    js {
-        browser()
-        nodejs()
-        binaries.library()
-    }
-
-    wasmJs {
-        browser()
-        nodejs()
-        d8()
-        binaries.library()
-    }
-
-    wasmWasi {
-        nodejs()
-        binaries.library()
-    }
-
-    // native, see https://kotlinlang.org/docs/native-target-support.html
-    // tier 1
-    macosX64()
-    macosArm64()
-    iosSimulatorArm64()
-    iosX64()
-    iosArm64()
-
-    // tier 2
-    linuxX64()
-    linuxArm64()
-    watchosSimulatorArm64()
-    watchosX64()
-    watchosArm32()
-    watchosArm64()
-    tvosSimulatorArm64()
-    tvosX64()
-    tvosArm64()
-
-    // tier 3
-    androidNativeArm32()
-    androidNativeArm64()
-    androidNativeX86()
-    androidNativeX64()
-    mingwX64()
-    watchosDeviceArm64()
-
-    swiftExport {}
-
-    sourceSets {
-
-        commonTest {
-            dependencies {
-                implementation(libs.kotlin.test)
-                implementation(libs.xemantic.kotlin.test)
+    plugins.withId("org.jetbrains.dokka") {
+        configure<DokkaExtension> {
+            pluginsConfiguration.named<DokkaHtmlPluginParameters>("html") {
+                footerMessage.set("© 2026 Xemantic")
             }
         }
-
     }
 
 }
 
-repositories {
-    mavenCentral()
-}
-
-configurations.all {
-    resolutionStrategy.eachDependency {
-        if (requested.group == "org.ow2.asm") {
-            useVersion(libs.versions.asm.get())
-        }
+// version-catalog-update rewrites gradle/libs.versions.toml in place; with keepUnusedVersions =
+// false it deletes any version not referenced by a [libraries]/[plugins] entry. kotlinTarget and
+// javaTarget are read only from build scripts (libs.versions.*/findVersion in build-logic), and
+// `asm` is a standalone pin referenced by neither — so all three are kept to survive the rewrite.
+versionCatalogUpdate {
+    sortByKey = false
+    keep {
+        versions = setOf("kotlinTarget", "javaTarget", "asm")
+        keepUnusedVersions = false
     }
-}
-
-// skip tests which require XCode components to be installed
-tasks {
-    named("tvosSimulatorArm64Test") { enabled = false }
-    named("watchosSimulatorArm64Test") { enabled = false }
-}
-
-powerAssert {
-    functions = listOf(
-        "com.xemantic.kotlin.test.assert",
-        "com.xemantic.kotlin.test.have"
-    )
-}
-
-// https://kotlinlang.org/docs/dokka-migration.html#adjust-configuration-options
-dokka {
-    pluginsConfiguration.html {
-        footerMessage = xemantic.copyright
-    }
-}
-
-mavenPublishing {
-
-    publishToMavenCentral(automaticRelease = true)
-    signAllPublications()
-
-    pom {
-
-        name = rootProject.name
-        description = xemantic.description
-        inceptionYear = xemantic.inceptionYear
-        url = "https://github.com/${xemantic.gitHubAccount}/${rootProject.name}"
-
-        organization {
-            name = xemantic.organization
-            url = xemantic.organizationUrl
-        }
-
-        licenses {
-            license {
-                name = "The Apache License, Version 2.0"
-                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
-                distribution = "https://www.apache.org/licenses/LICENSE-2.0.txt"
-            }
-        }
-
-        scm {
-            url = "https://github.com/${xemantic.gitHubAccount}/${rootProject.name}"
-            connection = "scm:git:git://github.com/${xemantic.gitHubAccount}/${rootProject.name}.git"
-            developerConnection = "scm:git:ssh://git@github.com/${xemantic.gitHubAccount}/${rootProject.name}.git"
-        }
-
-        ciManagement {
-            system = "GitHub"
-            url = "https://github.com/${xemantic.gitHubAccount}/${rootProject.name}/actions"
-        }
-
-        issueManagement {
-            system = "GitHub"
-            url = "https://github.com/${xemantic.gitHubAccount}/${rootProject.name}/issues"
-        }
-
-        developers {
-            projectDevs()
-        }
-
-    }
-
 }
 
 val releaseAnnouncementSubject = """🚀 ${rootProject.name} $version has been released!"""

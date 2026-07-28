@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Kazimierz Pogoda / Xemantic
+ * Copyright 2026 Kazimierz Pogoda / Xemantic
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,20 +14,18 @@
  * limitations under the License.
  */
 
-package com.xemantic.kotlin.data.api
+package com.xemantic.kotlin.data.api.test
 
-import com.xemantic.kotlin.test.have
-import com.xemantic.kotlin.test.should
-import kotlin.test.Test
+import com.xemantic.kotlin.data.api.DataApi
 
-// TODO replace with your code
-class HelloWorldTest {
-
-    @Test
-    fun `should have singleton object Foo with const BAR equal to buzz`() {
-        Foo should {
-            have(BAR == "buzz")
-        }
-    }
-
-}
+/**
+ * A sample `@DataApi` class with two required properties (`id`, `email`) separated by a nullable
+ * one (`nickname`), used to assert that `build()` reports missing required properties in
+ * constructor-declaration order while skipping the intervening nullable property.
+ */
+@DataApi
+class Account(
+    val id: String,
+    val nickname: String?,
+    val email: String
+)

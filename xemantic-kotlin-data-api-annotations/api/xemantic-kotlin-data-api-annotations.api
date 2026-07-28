@@ -1,0 +1,6 @@
+public abstract interface annotation class com/xemantic/kotlin/data/api/DataApi : java/lang/annotation/Annotation {
+}
+
+public abstract interface annotation class com/xemantic/kotlin/data/api/DataApiDsl : java/lang/annotation/Annotation {
+}
+

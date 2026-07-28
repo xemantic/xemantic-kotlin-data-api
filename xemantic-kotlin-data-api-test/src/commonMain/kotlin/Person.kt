@@ -14,15 +14,17 @@
  * limitations under the License.
  */
 
-pluginManagement {
-    includeBuild("build-logic")
-}
+package com.xemantic.kotlin.data.api.test
 
-rootProject.name = "xemantic-kotlin-data-api"
+import com.xemantic.kotlin.data.api.DataApi
 
-include(
-    ":xemantic-kotlin-data-api-annotations",
-    ":xemantic-kotlin-data-api-compiler-plugin",
-    ":xemantic-kotlin-data-api-gradle-plugin",
-    ":xemantic-kotlin-data-api-test",
+/**
+ * A sample `@DataApi` class for the end-to-end test. The compiler plugin lowers the primary
+ * constructor to `internal` and synthesizes a nested `Person.Builder` plus a companion `invoke`
+ * operator into this module.
+ */
+@DataApi
+class Person(
+    val name: String,
+    val age: Int?
 )
