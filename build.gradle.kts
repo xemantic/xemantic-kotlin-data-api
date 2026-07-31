@@ -137,6 +137,23 @@ subprojects {
 
 }
 
+// applyJReleaserConventions() makes the root `jreleaserAnnounce` depend on a root-project
+// `publishToMavenCentral` — the task the vanniktech plugin creates in whichever project it is
+// applied to. In this multimodule build it is applied to the subprojects and not to the root,
+// so the root needs an aggregate of that name; without it the release build dies at task-graph
+// resolution ("Task with name 'publishToMavenCentral' not found in root project"), before
+// anything is built or published. The dependencies are computed lazily, since the subprojects
+// are evaluated after the root.
+tasks.register("publishToMavenCentral") {
+    group = "publishing"
+    description = "Publishes all publishable modules to Maven Central."
+    dependsOn(provider {
+        subprojects
+            .filter { it.plugins.hasPlugin("com.vanniktech.maven.publish.base") }
+            .map { "${it.path}:publishToMavenCentral" }
+    })
+}
+
 // version-catalog-update rewrites gradle/libs.versions.toml in place; with keepUnusedVersions =
 // false it deletes any version not referenced by a [libraries]/[plugins] entry. kotlinTarget and
 // javaTarget are read only from build scripts (libs.versions.*/findVersion in build-logic), and
