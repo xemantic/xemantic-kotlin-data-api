@@ -18,6 +18,7 @@ package com.xemantic.kotlin.data.api.test
 
 import com.xemantic.kotlin.data.api.DataApiDsl
 import com.xemantic.kotlin.test.assert
+import java.lang.reflect.Modifier
 import kotlin.reflect.KVisibility
 import kotlin.reflect.full.declaredMemberProperties
 import kotlin.reflect.full.primaryConstructor
@@ -26,25 +27,39 @@ import kotlin.test.Test
 /**
  * The constructor-privatization half of the `@DataApi` toolchain, asserted through reflection and
  * therefore only runnable on targets that ship `kotlin-reflect` (the JVM). The compiler plugin must
- * have lowered [Person]'s primary constructor to `internal` (FIR). The rest of the toolchain
- * (synthesized `Person.Builder` and companion `invoke`) is exercised in `commonTest`.
+ * have lowered [Person]'s primary constructor to `private` (FIR). The rest of the toolchain
+ * (synthesized `Person.Builder` and the `Person(block)` factory) is exercised in `commonTest`.
  */
 class DataApiReflectionTest {
 
     @Test
-    fun `should lower the primary constructor to internal during compilation of DataApi classes`() {
-        assert(Person::class.primaryConstructor!!.visibility == KVisibility.INTERNAL)
+    fun `should lower the primary constructor to private during compilation of DataApi classes`() {
+        assert(Person::class.primaryConstructor!!.visibility == KVisibility.PRIVATE)
     }
 
     @Test
-    fun `should lower a secondary constructor to internal as well`() {
+    fun `should lower a secondary constructor to private as well`() {
         // given: a public secondary constructor would be a construction path bypassing the
         // builder's required-property validation
         val constructors = Session::class.constructors
 
         // then
         assert(constructors.size == 2)
-        assert(constructors.all { it.visibility == KVisibility.INTERNAL })
+        assert(constructors.all { it.visibility == KVisibility.PRIVATE })
+    }
+
+    @Test
+    fun `should keep the lowered constructor out of reach of Java`() {
+        // given: `internal` would not do — the JVM backend emits an internal constructor as
+        // ACC_PUBLIC, since a constructor cannot be name-mangled the way an internal function is,
+        // leaving the positional constructor callable from Java and still part of the binary API
+        val modifiers = Person::class.java.declaredConstructors
+            .filterNot { it.isSynthetic }
+            .map { it.modifiers }
+
+        // then
+        assert(modifiers.isNotEmpty())
+        assert(modifiers.all { Modifier.isPrivate(it) })
     }
 
     @Test

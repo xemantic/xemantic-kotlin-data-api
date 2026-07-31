@@ -22,4 +22,11 @@ plugins {
 
 dependencies {
     compileOnly(libs.kotlin.compiler.embeddable)
+    // the diagnostics tests run the compiler in-process, so they need it on the test classpath,
+    // together with the `@DataApi` annotation the compiled snippets carry
+    testImplementation(libs.kotlin.compiler.embeddable)
+    testImplementation(libs.kotlin.compile.testing)
+    testImplementation(project(":xemantic-kotlin-data-api-annotations"))
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.xemantic.kotlin.test)
 }

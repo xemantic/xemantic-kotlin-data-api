@@ -22,15 +22,15 @@ import com.xemantic.kotlin.test.should
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 
-/**
- * Exercises the `@DataApi` toolchain on every target: the compiler plugin must have synthesized a
- * nested `Person.Builder` plus a companion `invoke` operator (FIR) and generated their bodies (IR),
- * all in this same module. The constructor-privatization half is asserted via reflection in the
- * JVM-only `DataApiReflectionTest`.
- */
 /** The `data` class counterpart of [Blob] — the behavior the plugin has to reproduce. */
 private data class ReferenceBlob(val data: ByteArray)
 
+/**
+ * Exercises the `@DataApi` toolchain on every target: the compiler plugin must have synthesized a
+ * nested `Person.Builder` plus a `Person(block)` factory function (FIR) and generated their bodies
+ * (IR), all in this same module. The constructor-privatization half is asserted via reflection in
+ * the JVM-only `DataApiReflectionTest`.
+ */
 class DataApiEndToEndTest {
 
     @Test
@@ -246,19 +246,17 @@ class DataApiEndToEndTest {
 
     @Test
     fun `should keep an explicit null assigned to a defaulted nullable property`() {
-        // given: passing null to the constructor keeps null — the default applies only to an
-        // argument that is *omitted*
-        val viaConstructor = Server(host = "xemantic.com", protocol = null)
-
-        // when: the same intent expressed through the builder DSL
-        val viaBuilder = Server {
+        // when: the DSL analogue of passing null to a defaulted constructor parameter, which keeps
+        // the null — a default applies only to an argument that is *omitted*
+        val server = Server {
             host = "xemantic.com"
             protocol = null
         }
 
-        // then: the builder distinguishes "assigned null" from "left unset", so both agree
-        assert(viaConstructor.protocol == null)
-        assert(viaBuilder.protocol == null)
+        // then: the builder distinguishes "assigned null" from "left unset"
+        assert(server.protocol == null)
+        // and the default is still what an omitted property resolves to
+        assert(Server { host = "xemantic.com" }.protocol == "https")
     }
 
     @Test
@@ -562,6 +560,20 @@ class DataApiEndToEndTest {
         // then
         assert(five == same)
         assert(five.hashCode() == same.hashCode())
+    }
+
+    @Test
+    fun `should leave a user-declared equals overriding through a type alias in place`() {
+        // given: `override fun equals(other: Anything?)` overrides `Any equals` through an alias,
+        // so the plugin must step aside — generating its own would clash with it
+        val one = Alias { value = "a" }
+
+        // when
+        val same = Alias { value = "a" }
+
+        // then
+        assert(one == same)
+        assert(one != Alias { value = "b" })
     }
 
     @Test

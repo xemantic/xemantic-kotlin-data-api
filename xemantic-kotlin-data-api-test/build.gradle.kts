@@ -27,6 +27,7 @@ import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 //                                                every compilation's compiler-plugin classpath.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlin.plugin.serialization)
     id("xemantic.data.api.convention")
 }
 
@@ -78,6 +79,10 @@ kotlin {
         commonMain {
             dependencies {
                 implementation(project(":xemantic-kotlin-data-api-annotations"))
+                // the @DataApi and the kotlinx.serialization compiler plugins both want to
+                // contribute a companion object to the same class, which is the interop this
+                // module has to keep exercising
+                implementation(libs.kotlinx.serialization.json)
             }
         }
 

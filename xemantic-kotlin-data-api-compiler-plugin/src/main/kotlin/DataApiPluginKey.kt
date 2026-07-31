@@ -20,6 +20,6 @@ import org.jetbrains.kotlin.GeneratedDeclarationKey
 
 /**
  * Marks every FIR/IR declaration synthesized by the `@DataApi` plugin (the nested `Builder`, the
- * companion `invoke`, their members) so the IR backend can recognize them and fill in the bodies.
+ * factory functions, their members) so the IR backend can recognize them and fill in the bodies.
  */
 object DataApiPluginKey : GeneratedDeclarationKey()

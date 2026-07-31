@@ -19,16 +19,21 @@ package com.xemantic.kotlin.data.api
 /**
  * Marks a class as an API-friendly data class.
  *
- * The accompanying compiler plugin lowers the visibility of the constructors
+ * The accompanying compiler plugin lowers the constructors to `private`
  * (so instances are created through the generated builder rather than directly), generates
- * a nested `Builder` and a companion `invoke` operator enabling the DSL form
+ * a nested `Builder` and a factory function named after the class enabling the DSL form
  * `ClassName { property = value }`, and generates `equals`/`hashCode`/`toString` the way the
  * Kotlin compiler does for `data` classes.
  *
- * Applicable to a final, non-generic, top-level or nested class with a primary constructor whose
- * every parameter declares a `val`/`var` property and none of which is a `vararg`, and which
- * declares neither a companion object nor a nested `Builder` of its own — the plugin generates
- * both. Any other class is rejected at compile time with an explanation.
+ * The factory function is declared next to a top-level class, and in the enclosing type for a
+ * nested one, so `Outer.Inner { … }` keeps reading as the constructor it replaces. The annotated
+ * class needs no companion object of its own, which is what lets it be `@Serializable` without any
+ * boilerplate.
+ *
+ * Applicable to a final, top-level or nested class with a primary constructor whose every parameter
+ * declares a `val`/`var` property and none of which is a `vararg`, and which does not declare a
+ * nested `Builder` of its own. The class may be generic, as long as its type parameters are
+ * invariant and unbounded. Any other class is rejected at compile time with an explanation.
  */
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.BINARY)

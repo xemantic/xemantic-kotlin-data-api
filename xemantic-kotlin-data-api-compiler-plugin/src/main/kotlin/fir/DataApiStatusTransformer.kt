@@ -28,16 +28,26 @@ import org.jetbrains.kotlin.fir.extensions.transform
 import org.jetbrains.kotlin.fir.extensions.predicate.DeclarationPredicate
 import org.jetbrains.kotlin.fir.extensions.predicateBasedProvider
 import org.jetbrains.kotlin.fir.symbols.impl.FirClassLikeSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirClassSymbol
 
 /**
- * Lowers the visibility of the constructors of every `@DataApi`-annotated class to `internal`, so
- * that instances can only be created through the generated builder (the nested `Builder` /
- * companion `invoke` synthesized by [DataApiBuilderGenerator]) rather than directly by external
- * callers. Every constructor is lowered, not just the primary one: a secondary constructor left
- * public would hand external callers a construction path bypassing the builder's validation.
+ * Lowers the visibility of the constructors of every `@DataApi`-annotated class to `private`, so
+ * that instances can only be created through the generated builder (the nested `Builder` and the
+ * factory function synthesized by [DataApiBuilderGenerator]) rather than directly. Every
+ * constructor is lowered, not just the primary one: a secondary constructor left public would hand
+ * callers a construction path bypassing the builder's validation.
  *
- * A constructor the user already declared as narrower than `internal` keeps its own visibility —
- * lowering must never widen what the author wrote.
+ * `private` rather than `internal`, because `internal` is a Kotlin-only boundary: the JVM backend
+ * emits an internal constructor as `ACC_PUBLIC` (unlike an internal *function*, a constructor
+ * cannot be name-mangled), leaving the positional constructor callable from Java and so still part
+ * of the binary API this plugin exists to retire. The generated `build()` reaches the private
+ * constructor from the nested `Builder` through the synthetic accessor the JVM backend generates
+ * for exactly this pattern.
+ *
+ * A class whose shape the plugin cannot generate for keeps its constructors as declared — see
+ * [dataApiViolation]. It has no builder to be constructed through, so privatizing it would leave it
+ * with no construction path at all, and every call site and subclass would report an inaccessible
+ * constructor on top of the one diagnostic explaining what is actually wrong.
  */
 class DataApiStatusTransformer(
     session: FirSession
@@ -52,12 +62,11 @@ class DataApiStatusTransformer(
         containingClass: FirClassLikeSymbol<*>?,
         isLocal: Boolean
     ): FirDeclarationStatus {
-        if (containingClass == null) return status
+        if (containingClass !is FirClassSymbol<*>) return status
         if (!session.predicateBasedProvider.matches(PREDICATE, containingClass)) return status
-        return when (status.visibility) {
-            Visibilities.Private, Visibilities.Protected, Visibilities.Internal -> status
-            else -> status.transform(visibility = Visibilities.Internal)
-        }
+        if (containingClass.dataApiViolation(session) != null) return status
+        return if (status.visibility == Visibilities.Private) status
+        else status.transform(visibility = Visibilities.Private)
     }
 
     override fun FirDeclarationPredicateRegistrar.registerPredicates() {

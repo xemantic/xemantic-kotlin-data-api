@@ -34,6 +34,7 @@ import org.jetbrains.kotlin.ir.builders.irExprBody
 import org.jetbrains.kotlin.ir.builders.irFalse
 import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.builders.irIfThen
+import org.jetbrains.kotlin.ir.builders.irImplicitCast
 import org.jetbrains.kotlin.ir.builders.irIfThenElse
 import org.jetbrains.kotlin.ir.builders.irReturn
 import org.jetbrains.kotlin.ir.builders.irSetField
@@ -55,15 +56,20 @@ import org.jetbrains.kotlin.ir.expressions.IrGetValue
 import org.jetbrains.kotlin.ir.expressions.IrMemberAccessExpression
 import org.jetbrains.kotlin.ir.expressions.impl.IrThrowImpl
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
+import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.classifierOrNull
+import org.jetbrains.kotlin.ir.types.defaultType
 import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.util.IrBasedDataClassMembersGenerator
+import org.jetbrains.kotlin.ir.util.IrTypeParameterRemapper
+import org.jetbrains.kotlin.ir.util.TypeRemapper
 import org.jetbrains.kotlin.ir.util.deepCopyWithSymbols
 import org.jetbrains.kotlin.ir.util.functions
-import org.jetbrains.kotlin.ir.util.isNullable
+import org.jetbrains.kotlin.ir.types.isMarkedNullable
+import org.jetbrains.kotlin.ir.types.makeNotNull
 import org.jetbrains.kotlin.ir.util.kotlinFqName
 import org.jetbrains.kotlin.ir.util.parentAsClass
 import org.jetbrains.kotlin.ir.util.primaryConstructor
@@ -76,9 +82,10 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 
 /**
- * Fills in the bodies of the `build`, `copy` and `invoke` functions that `DataApiBuilderGenerator`
- * declared at the FIR stage. The builder's mutable properties and the two constructors get their
- * bodies from Fir2Ir automatically; only these functions carry hand-rolled logic.
+ * Fills in the bodies of the `build`, `copy`, `equals`/`hashCode`/`toString` and factory functions
+ * that `DataApiBuilderGenerator` declared at the FIR stage. The builder's mutable properties and the
+ * two constructors get their bodies from Fir2Ir automatically; only these functions carry
+ * hand-rolled logic.
  */
 class DataApiIrGenerationExtension : IrGenerationExtension {
 
@@ -155,18 +162,41 @@ private class DataApiIrVisitor(
 
     override fun visitSimpleFunction(declaration: IrSimpleFunction) {
         val origin = declaration.origin
-        if (origin is IrDeclarationOrigin.GeneratedByPlugin && origin.pluginKey == DataApiPluginKey) {
-            when (declaration.name) {
-                BUILD_NAME -> {
-                    generateAssignmentTracking(declaration.parentAsClass)
-                    generateBuildBody(declaration)
-                }
+        if (origin !is IrDeclarationOrigin.GeneratedByPlugin || origin.pluginKey != DataApiPluginKey) {
+            return
+        }
+        // Which body a generated function needs is decided by where it was generated *into*, not by
+        // its name alone: a class may legally be called `copy` or `build`, and its factory function
+        // — named after it — would otherwise be taken for the member of that name and handed to a
+        // body generator that expects an enclosing class it does not have.
+        val owner = declaration.parent as? IrClass
+        when {
+            owner == null -> generateFactoryBody(declaration)
+            owner.isGeneratedBuilder() -> if (declaration.name == BUILD_NAME) {
+                generateAssignmentTracking(owner)
+                generateBuildBody(declaration)
+            }
+            owner.hasGeneratedBuilder() -> when (declaration.name) {
                 COPY_NAME -> generateCopyBody(declaration)
-                INVOKE_NAME -> generateInvokeBody(declaration)
                 EQUALS_NAME, HASHCODE_NAME, TO_STRING_NAME -> generateDataClassMember(declaration)
             }
+            // the remaining place a function is generated into is the type hosting the factories of
+            // the `@DataApi` classes nested in it — an object, or a companion object
+            else -> generateFactoryBody(declaration)
         }
     }
+
+    /** Whether this class is a `Builder` this plugin generated, rather than one a user declared. */
+    private fun IrClass.isGeneratedBuilder(): Boolean {
+        val origin = origin
+        return name == BUILDER_NAME &&
+            origin is IrDeclarationOrigin.GeneratedByPlugin &&
+            origin.pluginKey == DataApiPluginKey
+    }
+
+    /** Whether this class is a `@DataApi` class, i.e. one the plugin gave a `Builder`. */
+    private fun IrClass.hasGeneratedBuilder(): Boolean =
+        declarations.any { it is IrClass && it.isGeneratedBuilder() }
 
     /**
      * Fills `equals`/`hashCode`/`toString` by delegating to the compiler's own
@@ -229,11 +259,11 @@ private class DataApiIrVisitor(
         }?.symbol ?: anyHashCode
 
     /**
-     * Makes every defaulted property of [builderClass] record its own assignment, so that `build()`
-     * can tell "left unset" from "explicitly assigned `null`" — a distinction the property value
-     * alone cannot carry, since the builder types every property as nullable. The private
-     * `<property>$isAssigned` flag declared alongside it in FIR is initialized to `false` and
-     * flipped by the property's setter, whose Fir2Ir-generated body is replaced with:
+     * Makes every property of [builderClass] that carries an `$isAssigned` flag record its own
+     * assignment, so that `build()` can tell "left unset" from "explicitly assigned `null`" — a
+     * distinction the property value alone cannot carry, since the builder types every property as
+     * nullable. The private `<property>$isAssigned` flag declared alongside it in FIR is initialized
+     * to `false` and flipped by the property's setter, whose Fir2Ir-generated body is replaced with:
      *
      * ```
      * set(value) {
@@ -242,6 +272,10 @@ private class DataApiIrVisitor(
      * }
      * ```
      *
+     * Which properties get a flag is decided in FIR (see `DataApiBuilderGenerator.tracksAssignment`)
+     * and read back here from the flags that are actually there, rather than derived a second time —
+     * the two answers have to be the same one.
+     *
      * `copy` drives the very same setters, so a copied instance carries its nulls over faithfully
      * instead of having them re-defaulted.
      */
@@ -249,12 +283,11 @@ private class DataApiIrVisitor(
         val targetClass = builderClass.parentAsClass
         val constructor = targetClass.primaryConstructor ?: return
         constructor.parameters
-            .filter { it.kind == IrParameterKind.Regular && it.defaultValue != null }
+            .filter { it.kind == IrParameterKind.Regular }
             .forEach { parameter ->
                 val property = builderClass.properties.first { it.name == parameter.name }
-                val flagField = builderClass.properties
-                    .first { it.name == assignedFlagName(parameter.name) }
-                    .backingField ?: return@forEach
+                val flagField = builderClass.assignmentFlagOf(parameter)
+                    ?.backingField ?: return@forEach
                 val field = property.backingField ?: return@forEach
                 val setter = property.setter ?: return@forEach
                 val value = setter.parameters.first { it.kind == IrParameterKind.Regular }
@@ -270,6 +303,21 @@ private class DataApiIrVisitor(
                 }
             }
     }
+
+    /** The `<property>$isAssigned` flag of [parameter]'s builder property, if it has one. */
+    private fun IrClass.assignmentFlagOf(parameter: IrValueParameter): IrProperty? =
+        properties.firstOrNull { it.name == assignedFlagName(parameter.name) }
+
+    /**
+     * Whether [parameter] is typed as a bare type parameter — `val data: T`, not `T?` or `List<T>`.
+     *
+     * Such a property is *declared* non-null yet legitimately holds `null` whenever the caller
+     * instantiates that type parameter with a nullable type, so neither its declared nullability nor
+     * its value can say whether the caller supplied it. Its `$isAssigned` flag can.
+     */
+    private fun isBareTypeParameter(parameter: IrValueParameter): Boolean =
+        parameter.type.classifierOrNull is IrTypeParameterSymbol &&
+            !parameter.type.isMarkedNullable()
 
     /**
      * `build()`: validates that every required property was set, collecting **all** missing ones
@@ -308,6 +356,10 @@ private class DataApiIrVisitor(
         val constructor = targetClass.primaryConstructor ?: return
         val receiver = function.dispatchReceiverParameter ?: return
         val regularParameters = constructor.parameters.filter { it.kind == IrParameterKind.Regular }
+        // everything read off the constructor is typed with the class's type parameters, while this
+        // body lives in the builder, which mirrors them onto its own
+        val toBuilder = targetClass.typeParameterRemapperTo(builderClass)
+        val builderTypeArguments = builderClass.typeParameters.map { it.defaultType }
         val builder = DeclarationIrBuilder(context, function.symbol)
         function.body = builder.irBlockBody {
 
@@ -326,23 +378,44 @@ private class DataApiIrVisitor(
                 }
             }
 
-            val requiredParameters = regularParameters.filterNot { it.type.isNullable() }
+            /**
+             * What makes [parameter] missing, or `null` when nothing can — it is either optional or
+             * always resolvable.
+             */
+            fun missingCondition(parameter: IrValueParameter): IrExpression? {
+                // *declared* nullability, not `isNullable()`: an unbounded type parameter is
+                // nullable by its `Any?` bound, yet a property typed `T` rather than `T?` is one the
+                // caller is still expected to supply
+                if (parameter.type.isMarkedNullable()) return null
+                val flagged = builderClass.assignmentFlagOf(parameter) != null
+                return when {
+                    // a bare type parameter holds `null` legitimately — for `Response<String?, …>`
+                    // it is a `String?` — so what makes it missing is not having been assigned at
+                    // all, which only its flag can tell. With a default value it can never be
+                    // missing: unassigned simply falls back to that default
+                    isBareTypeParameter(parameter) && flagged ->
+                        if (parameter.defaultValue != null) null
+                        else irEquals(assignedFlag(parameter), irFalse())
+                    // a defaulted property can only go missing by an explicit `= null`
+                    parameter.defaultValue != null && flagged -> irIfThenElse(
+                        context.irBuiltIns.booleanType,
+                        assignedFlag(parameter),
+                        irEqualsNull(builderValue(parameter)),
+                        irFalse()
+                    )
+                    else -> irEqualsNull(builderValue(parameter))
+                }
+            }
+
+            val requiredParameters = regularParameters.filter { missingCondition(it) != null }
             if (requiredParameters.isNotEmpty()) {
                 val missing = irTemporary(
                     irCall(mutableListOf, mutableListClass.typeWith(stringType), listOf(stringType))
                 )
                 requiredParameters.forEach { parameter ->
-                    val unset = irEqualsNull(builderValue(parameter))
                     +irIfThen(
                         context.irBuiltIns.unitType,
-                        if (parameter.defaultValue == null) unset
-                        // a defaulted property can only go missing by an explicit `= null`
-                        else irIfThenElse(
-                            context.irBuiltIns.booleanType,
-                            assignedFlag(parameter),
-                            unset,
-                            irFalse()
-                        ),
+                        missingCondition(parameter)!!,
                         irCall(mutableListAdd).apply {
                             arguments[mutableListAdd.owner.dispatchReceiverParameter!!] = irGet(missing)
                             arguments[mutableListAdd.owner.parameters.first { it.kind == IrParameterKind.Regular }] =
@@ -377,11 +450,25 @@ private class DataApiIrVisitor(
             }
 
             /** `value` for a nullable parameter, `requireNotNull(value)` for a required one. */
-            fun asDeclared(parameter: IrValueParameter, value: IrExpression): IrExpression =
-                if (parameter.type.isNullable()) value
-                else irCall(requireNotNull, parameter.type, listOf(parameter.type)).apply {
+            fun asDeclared(parameter: IrValueParameter, value: IrExpression): IrExpression {
+                val type = toBuilder.remapType(parameter.type)
+                if (type.isMarkedNullable()) return value
+                // a bare type parameter must not be asserted non-null: `null` is what a
+                // `Response<String?, …>` legitimately holds, and `requireNotNull` would reject it.
+                // The flag has already established that the caller assigned this value, so it is
+                // taken as the `T` it was assigned as
+                if (isBareTypeParameter(parameter) &&
+                    builderClass.assignmentFlagOf(parameter) != null
+                ) {
+                    return irImplicitCast(value, type)
+                }
+                // `requireNotNull` is bounded by `T : Any`, which a bare type parameter does not
+                // satisfy — its definitely-non-null form does
+                val notNull = type.makeNotNull()
+                return irCall(requireNotNull, notNull, listOf(notNull)).apply {
                     arguments[requireNotNull.owner.parameters.first()] = value
                 }
+            }
 
             /**
              * Rewires references to the constructor's own parameters, which a copied default
@@ -401,27 +488,29 @@ private class DataApiIrVisitor(
 
             val resolved = mutableMapOf<IrValueParameter, IrVariable>()
             regularParameters.forEach { parameter ->
+                val type = toBuilder.remapType(parameter.type)
                 val default = parameter.defaultValue
                 val value = if (default == null) {
                     asDeclared(parameter, builderValue(parameter))
                 } else {
                     irIfThenElse(
-                        parameter.type,
+                        type,
                         assignedFlag(parameter),
                         asDeclared(parameter, builderValue(parameter)),
                         default.expression
-                            .deepCopyWithSymbols(function)
+                            .deepCopyWithSymbols(function) { toBuilder }
                             .bindToResolved(resolved)
                     )
                 }
                 resolved[parameter] = irTemporary(
                     value,
                     nameHint = parameter.name.asString(),
-                    irType = parameter.type
+                    irType = type
                 )
             }
 
-            val constructorCall = irCallConstructor(constructor.symbol, emptyList())
+            val constructorCall = irCallConstructor(constructor.symbol, builderTypeArguments)
+                .apply { type = function.returnType }
             regularParameters.forEach { parameter ->
                 constructorCall.arguments[parameter] = irGet(resolved.getValue(parameter))
             }
@@ -430,7 +519,7 @@ private class DataApiIrVisitor(
     }
 
     /**
-     * The `Builder` nested class of a `@DataApi` class, together with the two members the `invoke`
+     * The `Builder` nested class of a `@DataApi` class, together with the two members the factory
      * and `copy` bodies drive it through.
      */
     private class BuilderMembers(
@@ -449,35 +538,57 @@ private class DataApiIrVisitor(
         return BuilderMembers(builderClass, constructor, buildFunction)
     }
 
-    /** Emits `block(instance); return instance.build()` — the shared tail of `invoke` and `copy`. */
+    /**
+     * Emits `block(instance); return instance.build()` — the shared tail of the factory and `copy`.
+     *
+     * `build()` is typed by [resultType] rather than by its own return type, which is written in
+     * terms of the builder's type parameters: at this call site the receiver is a `Builder<T>` for
+     * the *caller's* `T`, so that is what the call produces.
+     */
     private fun IrBlockBodyBuilder.applyBlockAndBuild(
         instance: IrVariable,
         block: IrValueParameter,
-        buildFunction: IrSimpleFunction
+        buildFunction: IrSimpleFunction,
+        resultType: IrType
     ) {
         val invoke = context.irBuiltIns.functionN(1).functions.first { it.name == INVOKE_NAME }
-        +irCall(invoke).apply {
+        +irCall(invoke.symbol, context.irBuiltIns.unitType).apply {
             arguments[invoke.dispatchReceiverParameter!!] = irGet(block)
             arguments[invoke.parameters.first { it.kind == IrParameterKind.Regular }] =
                 irGet(instance)
         }
         +irReturn(
-            irCall(buildFunction).apply {
+            irCall(buildFunction.symbol, resultType).apply {
                 arguments[buildFunction.dispatchReceiverParameter!!] = irGet(instance)
             }
         )
     }
 
-    /** `invoke(block)`: `val b = Builder(); block(b); return b.build()`. */
-    private fun generateInvokeBody(function: IrSimpleFunction) {
-        val companionClass = function.parentAsClass
-        val targetClass = companionClass.parentAsClass
+    /**
+     * The factory function `Person(block)`: `val b = Builder(); block(b); return b.build()`.
+     *
+     * The target class is read off the return type rather than the function's parent, since the
+     * factory lives outside it either way — at the top level for a top-level class, or in the
+     * enclosing type's companion for a nested one.
+     *
+     * Neither host is generic even when the class is, so for a generic class the factory declares
+     * type parameters of its own, and it is those — not the class's — that the `Builder` is
+     * instantiated with.
+     */
+    private fun generateFactoryBody(function: IrSimpleFunction) {
+        val targetClass = function.returnType.classOrNull?.owner ?: return
         val members = targetClass.builderMembers() ?: return
         val block = function.parameters.first { it.kind == IrParameterKind.Regular }
+        val typeArguments = function.typeParameters.map { it.defaultType }
+        val builderType = members.builderClass.symbol.typeWith(typeArguments)
         val builder = DeclarationIrBuilder(context, function.symbol)
         function.body = builder.irBlockBody {
-            val instance = irTemporary(irCallConstructor(members.constructor.symbol, emptyList()))
-            applyBlockAndBuild(instance, block, members.buildFunction)
+            val instance = irTemporary(
+                irCallConstructor(members.constructor.symbol, typeArguments)
+                    .apply { type = builderType },
+                irType = builderType
+            )
+            applyBlockAndBuild(instance, block, members.buildFunction, function.returnType)
         }
     }
 
@@ -506,9 +617,17 @@ private class DataApiIrVisitor(
         val regularParameters = constructor.parameters.filter { it.kind == IrParameterKind.Regular }
         val receiver = function.dispatchReceiverParameter ?: return
         val block = function.parameters.first { it.kind == IrParameterKind.Regular }
+        // `copy` is a member of the class, so the builder it drives is instantiated with the
+        // class's own type parameters
+        val typeArguments = targetClass.typeParameters.map { it.defaultType }
+        val builderType = members.builderClass.symbol.typeWith(typeArguments)
         val builder = DeclarationIrBuilder(context, function.symbol)
         function.body = builder.irBlockBody {
-            val instance = irTemporary(irCallConstructor(members.constructor.symbol, emptyList()))
+            val instance = irTemporary(
+                irCallConstructor(members.constructor.symbol, typeArguments)
+                    .apply { type = builderType },
+                irType = builderType
+            )
             regularParameters.forEach { parameter ->
                 val getter = targetClass.properties.first { it.name == parameter.name }.getter!!
                 val setter = members.builderClass.properties.first { it.name == parameter.name }.setter!!
@@ -520,8 +639,16 @@ private class DataApiIrVisitor(
                         }
                 }
             }
-            applyBlockAndBuild(instance, block, members.buildFunction)
+            applyBlockAndBuild(instance, block, members.buildFunction, function.returnType)
         }
     }
+
+    /**
+     * Maps the type parameters of [this] class onto the ones [mirror] copied from it, so that a
+     * type or an expression lifted out of the class can be re-typed for a body generated into the
+     * mirroring class. Empty — and so an identity remapper — for a non-generic class.
+     */
+    private fun IrClass.typeParameterRemapperTo(mirror: IrClass): TypeRemapper =
+        IrTypeParameterRemapper(typeParameters.zip(mirror.typeParameters).toMap())
 
 }

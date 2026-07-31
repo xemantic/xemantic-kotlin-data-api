@@ -44,8 +44,9 @@ internal val BUILDER_NAME: Name = Name.identifier("Builder")
 
 /**
  * The name of the private `Builder` flag recording that [property] was assigned, generated for
- * properties backed by a primary constructor parameter with a default value. The `$` keeps it out
- * of reach of any user-declared property name, which cannot contain one.
+ * every property whose value alone cannot say whether it was — one with a default value, and one
+ * typed as a bare type parameter. The `$` keeps it out of reach of any user-declared property name,
+ * which cannot contain one.
  */
 internal fun assignedFlagName(property: Name): Name =
-    Name.identifier("${property.asString()}\$isAssigned")
+    Name.identifier($$"$${property.asString()}$isAssigned")

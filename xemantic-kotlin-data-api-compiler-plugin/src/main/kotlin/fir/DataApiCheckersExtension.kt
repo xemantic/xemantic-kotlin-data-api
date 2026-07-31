@@ -50,7 +50,7 @@ private object DataApiClassChecker : FirRegularClassChecker(MppCheckerKind.Commo
     override fun check(declaration: FirRegularClass) {
         val symbol = declaration.symbol
         if (!symbol.hasAnnotation(DATA_API_ANNOTATION_CLASS_ID, context.session)) return
-        val violation = symbol.dataApiViolation() ?: return
+        val violation = symbol.dataApiViolation(context.session) ?: return
         reporter.reportOn(
             declaration.source,
             DataApiErrors.UNSUPPORTED_DATA_API_CLASS,
