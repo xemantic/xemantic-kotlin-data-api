@@ -111,7 +111,7 @@ class Person private constructor(
 fun Person(block: Person.Builder.() -> Unit): Person = Person.Builder().apply(block).build()
 ```
 
-A function rather than an `operator fun invoke` on a generated companion object, for the reason spelled out under [kotlinx.serialization](#kotlinxserialization) below — it is the same idiom as kotlinx's own `Json { … }`.
+A top-level function — the same idiom as kotlinx's own `Json { … }` — which leaves the class without a generated companion object, and so free to compose with other compiler plugins; see [kotlinx.serialization](#kotlinxserialization) below.
 For a **nested** class the factory is generated into the enclosing type instead — its companion object, or the object itself — so `Payload.Base64 { … }` still reads as the constructor it replaces:
 
 ```kotlin
@@ -205,7 +205,7 @@ val empty = Response<String, Int> {    // or stated explicitly
 }
 ```
 
-The `Builder` carries its own copies of the class's type parameters, since a nested class cannot refer to the type parameters of the class it is nested in — so the direct form is `Page.Builder<String>()`.
+The `Builder` carries its own copies of the class's type parameters, since a nested class cannot refer to the type parameters of the class it is nested in — so the direct form is `Response.Builder<String, Int>()`.
 
 A property typed `T` counts as **required**, even though an unbounded `T` can be instantiated with a nullable type: it is the property the caller is expected to assign, and leaving it unset would hand a null to a parameter that, for `Response<String, …>`, is a non-null `String`.
 Declare the property as `T?` for a payload that may legitimately be absent.
@@ -286,9 +286,8 @@ Json.encodeToString(Point { x = 1; y = 2 })  // {"x":1,"y":2}
 Json.decodeFromString<Point>("""{"x":1,"y":2}""")
 ```
 
-This is why the DSL entry point is a function rather than an `operator fun invoke`.
-A companion object *generated* by a compiler plugin can be extended by no other plugin, and two plugins each generating one for the same class fails the compilation outright — so an `invoke` operator would have forced every `@Serializable` model to declare a companion by hand, purely to give both plugins somewhere to write.
-A same-named function needs no companion, leaving the one kotlinx.serialization generates for `serializer()` as the only one.
+What makes this work is that the plugin generates no companion object.
+A companion *generated* by a compiler plugin can be extended by no other plugin, and two plugins each generating one for the same class fails the compilation outright — so the only companion here is the one kotlinx.serialization generates for `serializer()`, and neither plugin needs anything declared by hand.
 
 Deserialization drives the private primary constructor, which the generated serializer reaches as a nested declaration of the class it deserializes, so lowering the constructor costs nothing here.
 
@@ -302,7 +301,7 @@ sealed class Payload {
 
     @Serializable
     @DataApi
-    class Base64(override val mediaType: String, val data: String) : Payload()
+    class Base64(val mediaType: String, val data: String) : Payload()
 
     companion object   // ← shared ground: `serializer()` and `Base64(block)` both land here
 
