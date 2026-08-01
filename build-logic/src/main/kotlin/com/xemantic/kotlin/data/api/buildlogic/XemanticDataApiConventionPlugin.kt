@@ -61,6 +61,7 @@ private fun Project.doApply() {
     extensions.configure<PowerAssertGradleExtension> {
         functions.set(
             listOf(
+                "kotlin.assert",
                 "com.xemantic.kotlin.test.assert",
                 "com.xemantic.kotlin.test.have"
             )
