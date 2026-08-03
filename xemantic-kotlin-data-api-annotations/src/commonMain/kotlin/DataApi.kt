@@ -19,6 +19,15 @@ package com.xemantic.kotlin.data.api
 /**
  * Marks a class as an API-friendly data class.
  *
+ * Kotlin's backward compatibility guidelines advise library authors to
+ * [avoid using data classes in an API](https://kotlinlang.org/docs/api-guidelines-backward-compatibility.html#avoid-using-data-classes-in-your-api),
+ * because a `data` class publishes its primary constructor and its generated `copy` as binary API:
+ * adding a property changes both signatures — even when the property has a default value — and the
+ * generated `componentN` functions make the property order behaviorally significant. This annotation
+ * is the workaround the guidelines describe, generated rather than hand-written: the constructor is
+ * hidden, `copy` takes a builder block instead of positional arguments, no `componentN` is generated,
+ * and adding a property is a purely additive change to the generated builder.
+ *
  * The accompanying compiler plugin lowers the constructors to `private`
  * (so instances are created through the generated builder rather than directly), generates
  * a nested `Builder` and a factory function named after the class enabling the DSL form

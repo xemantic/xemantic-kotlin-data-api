@@ -19,16 +19,6 @@ API-friendly data classes for Kotlin
 [<img alt="discord users online" src="https://img.shields.io/discord/811561179280965673">](https://discord.gg/vQktqqN2Vn)
 [![Bluesky](https://img.shields.io/badge/Bluesky-0285FF?logo=bluesky&logoColor=fff)](https://bsky.app/profile/xemantic.com)
 
-## Why?
-
-When data classes cross an API boundary — serialized to JSON, exposed over the wire, or consumed by other modules — the default Kotlin ergonomics fall short:
-
-* **The constructor is the API.** A `data class` publishes its primary constructor, so the *order* of its parameters becomes a compatibility constraint. Inserting a property in the middle is a source- and binary-breaking change for every caller.
-* **Wide, mostly optional models read poorly.** API payloads tend to have many properties, most of them optional. Constructing them with named arguments produces a wall of `property = null` noise that looks nothing like the payload it maps to.
-* **Nesting does not read structurally.** A nested request object built out of nested constructor calls reads inside-out, while the payload it describes is a tree.
-
-The `@DataApi` annotation, backed by a K2 compiler plugin, addresses this by making the *builder* the public construction path and hiding the constructors:
-
 ```kotlin
 @DataApi
 class Person(
@@ -42,8 +32,74 @@ val ada = Person {
 }
 ```
 
-`equals`, `hashCode`, `toString` and a `copy` are all still there — but the class stays free to grow, because no caller is holding onto a positional constructor call.
-Destructuring is the one `data` class feature deliberately left out: `component1()`, `component2()` … are positional by nature, and generating them would put the property *order* back into the API the plugin just took it out of.
+Everything a `data class` gives you except the parts that freeze your API: the constructor is hidden, a generated builder DSL is the way in, and the class stays free to gain properties without breaking anything already compiled against it.
+
+## Why?
+
+Kotlin's own [backward compatibility guidelines for library authors](https://kotlinlang.org/docs/api-guidelines-backward-compatibility.html#avoid-using-data-classes-in-your-api) state it plainly — **avoid using data classes in your API**:
+
+> In regular development, the strength of data classes is the extra functions that are generated for you.
+> In API design, this strength becomes a weakness.
+
+A `data class` publishes its primary constructor *and* its generated `copy` as binary API, which freezes the property list into two signatures at once.
+Adding a property changes both, and giving it a default value does not save you — the caller's bytecode is linked against the signature that existed when it was compiled, and that signature is gone:
+
+```kotlin
+data class User(val name: String, val email: String)
+// public final User copy(java.lang.String, java.lang.String)
+
+data class User(val name: String, val email: String, val active: Boolean = true)
+// public final User copy(java.lang.String, java.lang.String, boolean)
+```
+
+Callers compiled against the previous version fail at runtime with a `NoSuchMethodError`, so the model cannot grow without a major release — for a payload class that exists precisely to gain fields as the service behind it evolves, that is the whole lifecycle.
+The generated `componentN` functions add a second constraint on top: they turn the parameter *order* into behavioral API, so swapping two properties of the same type still compiles, still links, and silently swaps the values at every destructuring call site.
+
+The guidelines' own way out is to hand-write around the generated members:
+
+> It's possible to work around these issues by manually writing a secondary constructor and overriding the `copy` method.
+> However, the effort involved negates the convenience of using a data class.
+
+The `@DataApi` annotation, backed by a K2 compiler plugin, *is* that workaround — generated rather than hand-written.
+In the `Person` above, `equals`, `hashCode`, `toString` and a `copy` are all still there, but none of them pins the property list down:
+
+* **The constructor is not API.** It is lowered to `private`, so nothing outside the class is linked against its signature and adding a property changes nothing a caller can see.
+* **`copy` is not positional.** It takes a builder block — `copy(block: Builder.() -> Unit)` — a signature that does not mention the properties at all, and therefore does not change when they do.
+* **Growing the model is purely additive.** A new property adds a new `var` to the generated `Builder`; every previously compiled call site keeps linking to exactly what it linked to before.
+* **No `componentN` is generated.** Destructuring is the one `data` class feature deliberately left out, because it is positional by nature and would put the property *order* back into the API the plugin just took it out of. Reorder the constructor freely.
+
+Two things follow for free, once the builder rather than the constructor is the way in:
+
+* **Wide, mostly optional models read well.** API payloads tend to have many properties, most of them optional. Constructing them with named arguments produces a wall of `property = null` noise that looks nothing like the payload it maps to; assigning only what is present does not.
+* **Nesting reads structurally.** A nested request object built out of nested constructor calls reads inside-out, while the payload it describes is a tree — and a tree is what nested DSL blocks look like.
+
+### What about `@IntroducedAt`?
+
+`@DataApi` is not the only way to keep a payload class evolving.
+Kotlin 2.4 introduced [`@IntroducedAt`](https://kotlinlang.org/docs/api-guidelines-backward-compatibility.html#use-overloads-to-preserve-binary-compatibility) (Experimental, behind `@OptIn(ExperimentalVersionOverloading::class)`), which tags a newly added optional parameter with the version that introduced it and has the compiler emit hidden overloads for the older signatures.
+It genuinely fixes the problem above, and it is not JVM-only: annotating `active` in the `User` example lets a client compiled against the previous version keep linking and running, and the klib ABI carries both constructors *and* both `copy` overloads on JS, WasmJs and Native alike.
+
+What it costs is the freedom to shape the constructor:
+
+* the annotated parameter **must have a default** — *"`@IntroducedAt` annotation can only be added to parameters with default values"* — so a genuinely required property can never be added compatibly,
+* versioned parameters must come **last** — *"A required parameter appears after an optional parameter annotated with `@IntroducedAt`"* — so the property list becomes append-only, ordered by release history rather than by what the payload looks like,
+* every property added after 1.0 carries a version string forever, in a mechanism that is still Experimental,
+* it cannot overload `componentN`, which is what makes the append-only restriction load-bearing rather than incidental.
+
+`@DataApi` reaches the same binary stability structurally instead of by bookkeeping: there is no constructor in the API to keep stable, `copy` never mentions the properties, nothing needs annotating, and the property list can be reordered freely because no `componentN` was ever generated.
+The trade is the one described under [Required properties](#required-properties) — `@DataApi` *can* add a required property, and reports it at runtime rather than refusing it at compile time.
+
+### What about multi-field value classes?
+
+The better-immutability proposals ([KEEP-0453](https://github.com/Kotlin/KEEP/blob/main/proposals/KEEP-0453-better-immutability-value-classes-motivation.md), [KEEP-0454](https://github.com/Kotlin/KEEP/blob/main/proposals/KEEP-0454-better-immutability-value-classes-MFVC.md)) would lift the single-property restriction on `value class`, and [name-based destructuring](https://github.com/Kotlin/KEEP/blob/main/proposals/KEEP-0438-name-based-destructuring.md) has been Experimental since 2.3.20.
+They agree with `@DataApi` on one of the two points and diverge on the other.
+
+A multi-field value class generates **no `componentN`** — *"Unlike data classes, MFVCs do not support positional-based destructuring"* — so property order stops being API there too, reached by the same reasoning.
+But the positional primary constructor stays, and KEEP-0454 is explicit that adding a property to an MFVC is not binary compatible, the primary properties being the value's entire state: *"moving a property from or to primary properties is a breaking change, and there is no intended way to preserve compatibility."*
+No `copy` is generated either, and its ergonomic replacement — `copy var` — is a separate, also unaccepted proposal.
+
+Neither KEEP is accepted, both give the type `value` rather than reference semantics, and name-based destructuring deliberately leaves `data` classes alone: *"This KEEP does not change the current behavior of data classes. In particular, `componentN` functions are still generated."*
+Since those functions stay in the ABI, a reordered `data` class keeps mis-feeding call sites that were compiled earlier, whatever syntax new code uses to destructure.
 
 ## Usage
 
