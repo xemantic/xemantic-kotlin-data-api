@@ -391,6 +391,15 @@ Verify against the build, not the editor.
 
 The annotations are a Kotlin Multiplatform library, and the compiler plugin runs on every backend, covering: JVM, JS, WasmJs, WasmWasi and all the [Kotlin/Native targets](https://kotlinlang.org/docs/native-target-support.html) of tiers 1–3 (Apple, Linux, Windows, Android Native).
 
+## Related work
+
+[Poko](https://github.com/drewhamilton/Poko) starts from the same diagnosis —
+a `data class` makes a poor public API — and cuts it at the other joint:
+it generates `equals`, `hashCode` and `toString` and keeps the public constructor as the way in,
+where `@DataApi` replaces construction itself.
+The two are compared in [docs/comparison-with-poko.md](docs/comparison-with-poko.md) —
+including why Poko's original annotation was, of all things, `@DataApi`.
+
 ## Project structure
 
 | module                                     | purpose                                                                                  |
