@@ -29,6 +29,11 @@ private const val ANNOTATIONS_ARTIFACT = "xemantic-kotlin-data-api-annotations"
 
 private const val DATA_API_PLUGIN_ID = "com.xemantic.kotlin.data.api"
 
+private const val DATA_API_EXTENSION_NAME = "dataApi"
+
+// must match the option name declared by the compiler plugin's DataApiCommandLineProcessor
+private const val FIR_IDE_MODE_OPTION_NAME = "firIdeMode"
+
 private const val KOTLIN_JVM_PLUGIN_ID = "org.jetbrains.kotlin.jvm"
 private const val KOTLIN_ANDROID_PLUGIN_ID = "org.jetbrains.kotlin.android"
 private const val KOTLIN_MPP_PLUGIN_ID = "org.jetbrains.kotlin.multiplatform"
@@ -50,6 +55,10 @@ private val SUPPORTED_KOTLIN_PLUGIN_IDS = listOf(
 class DataApiGradlePlugin : KotlinCompilerPluginSupportPlugin {
 
     override fun apply(target: Project) {
+        target.extensions
+            .create(DATA_API_EXTENSION_NAME, DataApiExtension::class.java)
+            .firIdeMode
+            .convention(DataApiFirIdeMode.ALL)
         var annotationsWired = false
         fun wireAnnotations(configuration: String) {
             annotationsWired = true
@@ -84,8 +93,15 @@ class DataApiGradlePlugin : KotlinCompilerPluginSupportPlugin {
 
     override fun applyToCompilation(
         kotlinCompilation: KotlinCompilation<*>
-    ): Provider<List<SubpluginOption>> =
-        kotlinCompilation.target.project.provider { emptyList() }
+    ): Provider<List<SubpluginOption>> {
+        val project = kotlinCompilation.target.project
+        val firIdeMode = project.extensions
+            .getByType(DataApiExtension::class.java)
+            .firIdeMode
+        return firIdeMode.map { mode ->
+            listOf(SubpluginOption(FIR_IDE_MODE_OPTION_NAME, mode.name.lowercase()))
+        }
+    }
 
 }
 

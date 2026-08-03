@@ -20,6 +20,7 @@ package com.xemantic.kotlin.data.api.compiler
 
 import com.tschuchort.compiletesting.DiagnosticSeverity
 import com.tschuchort.compiletesting.KotlinCompilation
+import com.tschuchort.compiletesting.PluginOption
 import com.tschuchort.compiletesting.SourceFile
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import java.io.ByteArrayOutputStream
@@ -35,11 +36,20 @@ import java.io.ByteArrayOutputStream
  * caller could construct, and the diagnostic is the only thing standing between the user and an
  * internal compiler error.
  */
-internal fun compile(code: String): DataApiCompilation {
+internal fun compile(
+    code: String,
+    firIdeMode: DataApiFirIdeMode? = null
+): DataApiCompilation {
     val messages = ByteArrayOutputStream()
     val result = KotlinCompilation().apply {
         sources = listOf(SourceFile.kotlin("Sample.kt", SAMPLE_PREAMBLE + code))
         compilerPluginRegistrars = listOf(DataApiCompilerPluginRegistrar())
+        if (firIdeMode != null) {
+            commandLineProcessors = listOf(DataApiCommandLineProcessor())
+            pluginOptions = listOf(
+                PluginOption(DATA_API_PLUGIN_ID, "firIdeMode", firIdeMode.name.lowercase())
+            )
+        }
         // the snippets refer to `@DataApi` and, where relevant, to kotlin.test — both of which are
         // on this module's own test classpath
         inheritClassPath = true

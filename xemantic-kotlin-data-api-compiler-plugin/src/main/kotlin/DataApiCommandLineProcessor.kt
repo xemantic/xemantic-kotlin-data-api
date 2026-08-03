@@ -17,18 +17,56 @@
 package com.xemantic.kotlin.data.api.compiler
 
 import org.jetbrains.kotlin.compiler.plugin.AbstractCliOption
+import org.jetbrains.kotlin.compiler.plugin.CliOption
+import org.jetbrains.kotlin.compiler.plugin.CliOptionProcessingException
 import org.jetbrains.kotlin.compiler.plugin.CommandLineProcessor
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
+import org.jetbrains.kotlin.config.CompilerConfiguration
+import org.jetbrains.kotlin.config.CompilerConfigurationKey
 
 /**
- * Declares the command line options accepted by the plugin. The plugin currently has no
- * configurable options; the processor still has to exist so the plugin id is recognized.
+ * The configured [DataApiFirIdeMode], absent when the consumer did not pick one — in which case
+ * [DataApiFirIdeMode.DEFAULT] applies.
+ */
+val FIR_IDE_MODE_KEY: CompilerConfigurationKey<DataApiFirIdeMode> =
+    CompilerConfigurationKey.create("@DataApi FIR extensions to run in the IDE")
+
+/**
+ * Declares the command line options accepted by the plugin.
  */
 @OptIn(ExperimentalCompilerApi::class)
 class DataApiCommandLineProcessor : CommandLineProcessor {
 
     override val pluginId: String = DATA_API_PLUGIN_ID
 
-    override val pluginOptions: Collection<AbstractCliOption> = emptyList()
+    override val pluginOptions: Collection<AbstractCliOption> = listOf(FIR_IDE_MODE_OPTION)
+
+    override fun processOption(
+        option: AbstractCliOption,
+        value: String,
+        configuration: CompilerConfiguration
+    ) {
+        when (option) {
+            FIR_IDE_MODE_OPTION -> configuration.put(
+                FIR_IDE_MODE_KEY,
+                DataApiFirIdeMode.ofCliValue(value) ?: throw CliOptionProcessingException(
+                    "Unknown '$FIR_IDE_MODE_OPTION_NAME' value: '$value', " +
+                        "expected one of: ${DataApiFirIdeMode.cliValues}"
+                )
+            )
+            else -> throw CliOptionProcessingException("Unknown option: ${option.optionName}")
+        }
+    }
 
 }
+
+private const val FIR_IDE_MODE_OPTION_NAME = "firIdeMode"
+
+private val FIR_IDE_MODE_OPTION = CliOption(
+    optionName = FIR_IDE_MODE_OPTION_NAME,
+    valueDescription = DataApiFirIdeMode.cliValues,
+    description = "which FIR extensions to run in a non-CLI (IDE) session; " +
+        "a CLI compilation always runs all of them",
+    required = false,
+    allowMultipleOccurrences = false
+)

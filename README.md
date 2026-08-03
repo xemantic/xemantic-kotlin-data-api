@@ -382,10 +382,40 @@ In particular the class must not be:
 * a class with a `private` primary-constructor property that has no default value, which nothing could ever assign,
 * a class nested in a class that declares no `companion object` of its own.
 
-## Known issues
+## IDE support
 
-The IDE / language-server analyzer does not run this compiler plugin, so code using the synthesized DSL (`Person { … }`, `Person.Builder`, `copy { … }`) is reported as *"Unresolved reference"* even though it compiles and runs.
-Verify against the build, not the editor.
+Out of the box, the IntelliJ K2 analyzer does not run this plugin, so code using the synthesized DSL is reported as broken even though it compiles and runs:
+`Person.Builder` and `copy { … }` come out as *"Unresolved reference"*, while `Person { … }` binds to the constructor instead of the generated factory and reports *"No value passed for parameter 'name'"*.
+
+This is not specific to `@DataApi`.
+IntelliJ loads only a fixed set of **bundled** K2 compiler plugins — kotlinx.serialization, all-open, no-arg, parcelize, Compose and a handful of others — and ignores every third-party one, however the build wires it.
+Turning that restriction off makes the whole DSL resolve:
+
+> **Help → Find Action → Registry…** and uncheck `kotlin.k2.only.bundled.compiler.plugins.enabled`
+
+No restart is needed (the key declares `restartRequired="false"`); reload the Gradle project afterwards so the plugin jar is picked up.
+Verified against IntelliJ IDEA 2026.2 with Kotlin 2.4.10, where it takes the test module from several hundred red references to none.
+
+Three things are worth knowing before relying on it:
+
+* **It is a per-developer IDE setting**, not a project one, so it cannot be checked into a repository — every contributor has to flip it themselves.
+* **It is global, not per-plugin.** Unchecking it loads *every* non-bundled K2 compiler plugin, in every project that IDE opens, not just this one.
+* **The IDE analyzes with its own compiler.** IntelliJ 2026.2 resolves with kotlinc `2.4.20-dev-6724`, regardless of the Kotlin version the project builds with, and the FIR declaration-generation API this plugin uses is not stable across those versions. A different IDE build may therefore fail to run the plugin, and in the IDE that surfaces as an exception rather than a diagnostic.
+
+For that last case the plugin can be turned down in the IDE without being removed from the build:
+
+```kotlin
+import com.xemantic.kotlin.data.api.gradle.DataApiFirIdeMode
+
+dataApi {
+    firIdeMode.set(DataApiFirIdeMode.CHECKERS_ONLY)
+}
+```
+
+`ALL` (the default) generates and reports in the editor, `CHECKERS_ONLY` reports `@DataApi` misuse but generates nothing, and `NONE` disables the plugin in the editor entirely.
+A CLI compilation always runs everything, whatever this is set to, so it can never change the artifact your build produces — only what the editor sees.
+
+Either way, the build is the authority: verify against `./gradlew build`, not the editor.
 
 ## Supported platforms
 
