@@ -35,7 +35,13 @@ class DataApiCompilerPluginRegistrar : CompilerPluginRegistrar() {
     override val supportsK2: Boolean = true
 
     override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
-        FirExtensionRegistrarAdapter.registerExtension(DataApiFirExtensionRegistrar())
+        // only the FIR side is gated: IR generation runs in the backend, which the IDE analyzer
+        // never reaches, so there is nothing there for a non-CLI session to be spared
+        FirExtensionRegistrarAdapter.registerExtension(
+            DataApiFirExtensionRegistrar(
+                configuration.get(FIR_IDE_MODE_KEY, DataApiFirIdeMode.DEFAULT)
+            )
+        )
         IrGenerationExtension.registerExtension(DataApiIrGenerationExtension())
     }
 

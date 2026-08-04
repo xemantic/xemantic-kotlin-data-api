@@ -76,17 +76,19 @@ the payload it describes.
 | required properties | enforced by the compiler at every call site | validated at `build()`, all missing ones reported at once |
 | distinctive knobs | custom annotation, `@Poko.Skip`, `@Poko.ReadArrayContent` | derived defaults, unset-vs-`null`, visibility mirroring, generic builders, sealed-leaf factories |
 | kotlinx.serialization | orthogonal | composes by generating no companion object |
-| IDE (K2) | resolves, with generation hints and checkers, behind a registry flag | generated DSL not yet resolved by the analyzer |
+| IDE (K2) | resolves, with generation hints and checkers, behind a registry flag; `firIdeMode` to dial back | resolves the whole generated DSL behind the same registry flag; `firIdeMode` to dial back |
 | targets and license | all Kotlin Multiplatform targets, Apache-2.0 | all Kotlin Multiplatform targets, Apache-2.0 |
 
 ## Maturity
 
 Poko has been maintained since 2020 — originally under the name *ExtraCare* — and tracks every
 Kotlin compiler release with an explicit compatibility table reaching from Kotlin 1.3 to 2.4.
-Its IDE story is ahead of ours:
+The IDE story is now much the same for both:
 with the `kotlin.k2.only.bundled.compiler.plugins.enabled` registry option disabled, K2 IntelliJ
-resolves Poko classes and surfaces the plugin's own warnings and errors,
-where this library's DSL is [not yet resolved by the IDE](../README.md#known-issues).
+runs either plugin, and both expose a `firIdeMode` to turn their FIR extensions back down when it
+cannot ([details](../README.md#ide-support)).
+What Poko still has and this library does not is the record of having followed the compiler across
+seven years of releases — which is precisely the risk that mode exists to absorb.
 If you need a battle-tested plugin today and can live within a public constructor,
 Poko is the safer choice.
 
