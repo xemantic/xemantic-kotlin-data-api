@@ -18,6 +18,7 @@ package com.xemantic.kotlin.data.api.gradle
 
 import org.gradle.api.Project
 import org.gradle.api.provider.Provider
+import org.jetbrains.kotlin.gradle.plugin.InternalSubpluginOption
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilerPluginSupportPlugin
 import org.jetbrains.kotlin.gradle.plugin.SubpluginArtifact
@@ -33,6 +34,10 @@ private const val DATA_API_EXTENSION_NAME = "dataApi"
 
 // must match the option name declared by the compiler plugin's DataApiCommandLineProcessor
 private const val FIR_IDE_MODE_OPTION_NAME = "firIdeMode"
+
+// must match the compiler plugin's own DataApiFirIdeMode.DEFAULT, which is what it falls back to
+// when the option is absent — this value is never sent
+private val DEFAULT_FIR_IDE_MODE = DataApiFirIdeMode.ALL
 
 private const val KOTLIN_JVM_PLUGIN_ID = "org.jetbrains.kotlin.jvm"
 private const val KOTLIN_ANDROID_PLUGIN_ID = "org.jetbrains.kotlin.android"
@@ -58,7 +63,7 @@ class DataApiGradlePlugin : KotlinCompilerPluginSupportPlugin {
         target.extensions
             .create(DATA_API_EXTENSION_NAME, DataApiExtension::class.java)
             .firIdeMode
-            .convention(DataApiFirIdeMode.ALL)
+            .convention(DEFAULT_FIR_IDE_MODE)
         var annotationsWired = false
         fun wireAnnotations(configuration: String) {
             annotationsWired = true
@@ -99,7 +104,17 @@ class DataApiGradlePlugin : KotlinCompilerPluginSupportPlugin {
             .getByType(DataApiExtension::class.java)
             .firIdeMode
         return firIdeMode.map { mode ->
-            listOf(SubpluginOption(FIR_IDE_MODE_OPTION_NAME, mode.name.lowercase()))
+            // the default is not sent at all: it is what the compiler plugin assumes anyway, and a
+            // build that never touches the mode must keep compiling against a compiler plugin
+            // resolved to a version predating the option, which would reject it as unsupported.
+            // `InternalSubpluginOption` is the variant excluded from the compile task's input
+            // tracking — a CLI compilation ignores the mode by construction, so tracking it would
+            // invalidate every compilation and miss every build cache entry over an editor setting
+            // that provably cannot change the output
+            if (mode == DEFAULT_FIR_IDE_MODE) emptyList()
+            else listOf<SubpluginOption>(
+                InternalSubpluginOption(FIR_IDE_MODE_OPTION_NAME, mode.name.lowercase())
+            )
         }
     }
 

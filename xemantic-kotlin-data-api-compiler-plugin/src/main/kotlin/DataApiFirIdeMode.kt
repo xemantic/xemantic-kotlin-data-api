@@ -31,6 +31,9 @@ package com.xemantic.kotlin.data.api.compiler
  * Note that the IDE runs no plugin at all unless the `kotlin.k2.only.bundled.compiler.plugins.enabled`
  * registry option is off, so for most consumers every mode here looks the same as [NONE].
  */
+// must mirror the Gradle plugin's own DataApiFirIdeMode, which sends these names lowercased as the
+// `firIdeMode` option value; the two enums are separate types and a value renamed on one side only
+// fails at a consumer's build, not in this build
 enum class DataApiFirIdeMode {
 
     /**
@@ -51,6 +54,22 @@ enum class DataApiFirIdeMode {
      * builder.
      */
     NONE;
+
+    /**
+     * Whether a non-CLI session in this mode runs declaration generation — and with it the status
+     * transformer, which never runs without the generator: privatizing the constructors of a class
+     * whose builder was not generated leaves it with no construction path at all, so every call
+     * site would report an inaccessible constructor, which is strictly worse than the unresolved
+     * references that generating nothing produces on its own.
+     */
+    internal val generates: Boolean get() = this == ALL
+
+    /**
+     * Whether a non-CLI session in this mode runs the checkers. Independent of [generates], because
+     * the checkers read only the class as it is declared — reporting a violation while generating
+     * nothing is coherent, and is what [CHECKERS_ONLY] is.
+     */
+    internal val checks: Boolean get() = this != NONE
 
     internal val cliValue: String get() = name.lowercase()
 

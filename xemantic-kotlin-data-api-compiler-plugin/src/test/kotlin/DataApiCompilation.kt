@@ -47,7 +47,7 @@ internal fun compile(
         if (firIdeMode != null) {
             commandLineProcessors = listOf(DataApiCommandLineProcessor())
             pluginOptions = listOf(
-                PluginOption(DATA_API_PLUGIN_ID, "firIdeMode", firIdeMode.name.lowercase())
+                PluginOption(DATA_API_PLUGIN_ID, FIR_IDE_MODE_OPTION_NAME, firIdeMode.cliValue)
             )
         }
         // the snippets refer to `@DataApi` and, where relevant, to kotlin.test — both of which are

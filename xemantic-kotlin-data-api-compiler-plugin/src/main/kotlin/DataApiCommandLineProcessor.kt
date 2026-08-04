@@ -60,7 +60,7 @@ class DataApiCommandLineProcessor : CommandLineProcessor {
 
 }
 
-private const val FIR_IDE_MODE_OPTION_NAME = "firIdeMode"
+internal const val FIR_IDE_MODE_OPTION_NAME = "firIdeMode"
 
 private val FIR_IDE_MODE_OPTION = CliOption(
     optionName = FIR_IDE_MODE_OPTION_NAME,

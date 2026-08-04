@@ -52,6 +52,11 @@ interface DataApiExtension {
  * `kotlin.k2.only.bundled.compiler.plugins.enabled` registry option is turned off, so unless that
  * has been done every mode here behaves like [NONE].
  */
+// must mirror the compiler plugin's own DataApiFirIdeMode — this enum is what a consumer writes in
+// the build script and it is duplicated rather than shared, because this plugin sees the compiler
+// plugin only as a published artifact resolved onto a different classloader. The names are sent
+// lowercased as the `firIdeMode` option value and parsed back there, so a value renamed on one side
+// only fails at a consumer's build with an unknown-option error, not in this build
 enum class DataApiFirIdeMode {
 
     /**

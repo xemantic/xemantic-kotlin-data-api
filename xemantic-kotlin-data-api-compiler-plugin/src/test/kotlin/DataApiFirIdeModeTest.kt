@@ -36,6 +36,12 @@ import kotlin.test.assertFailsWith
  * IDE analyzer that cannot load this plugin — turning it down must never quietly change the
  * artifact the build produces, or a project that set it would ship different bytecode than one that
  * did not.
+ *
+ * The other half — what a non-CLI session actually gets — is only reachable here as the decision
+ * table on [DataApiFirIdeMode] itself. Every compilation below is a real CLI run, so
+ * `session is FirCliSession` holds in all of them and the mode is never consulted; there is no way
+ * to synthesize an analyzer session in-process. That the no-op extensions really do nothing once
+ * handed to one is verified by opening a project in the IDE, not by this build.
  */
 class DataApiFirIdeModeTest {
 
@@ -99,6 +105,29 @@ class DataApiFirIdeModeTest {
     }
 
     @Test
+    fun `should generate in a non-CLI session only under all, and check under everything but none`() {
+        // then
+        DataApiFirIdeMode.ALL should {
+            have(generates)
+            have(checks)
+        }
+        DataApiFirIdeMode.CHECKERS_ONLY should {
+            have(!generates)
+            have(checks)
+        }
+        DataApiFirIdeMode.NONE should {
+            have(!generates)
+            have(!checks)
+        }
+    }
+
+    @Test
+    fun `should have no mode generating without also reporting violations`() {
+        // then
+        assert(DataApiFirIdeMode.entries.none { it.generates && !it.checks })
+    }
+
+    @Test
     fun `should default to running everything when no firIdeMode is configured`() {
         // given
         val configuration = CompilerConfiguration()
@@ -108,9 +137,12 @@ class DataApiFirIdeModeTest {
     }
 
     @Test
-    fun `should read every firIdeMode value the Gradle plugin can send`() {
+    fun `should read the lowercased enum name the Gradle plugin sends`() {
         DataApiFirIdeMode.entries.forEach { mode ->
             // given
+            // spelled out rather than taken from `cliValue`, because the lowercased enum name is
+            // what the Gradle plugin's own, separate enum puts on the command line — round-tripping
+            // through this module's renderer would pass however that renderer changed
             val configuration = CompilerConfiguration()
 
             // when

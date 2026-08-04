@@ -39,10 +39,9 @@ class DataApiFirExtensionRegistrar(
 ) : FirExtensionRegistrar() {
 
     override fun ExtensionRegistrarContext.configurePlugin() {
-        // the status transformer follows the generator and never runs without it: privatizing the
-        // constructors of a class whose builder was not generated leaves it with no construction
-        // path at all, so every call site would report an inaccessible constructor — strictly
-        // worse than the unresolved references that not generating produces on its own
+        // the status transformer is gated on the same `generates` as the generator, never on one of
+        // its own: it must not run without the generator, and sharing the decision is what makes
+        // that structural rather than a pair of conditions that have to be kept in agreement
         +FirStatusTransformerExtension.Factory { session ->
             if (session.generates) DataApiStatusTransformer(session)
             else NoOpStatusTransformer(session)
@@ -58,11 +57,9 @@ class DataApiFirExtensionRegistrar(
         registerDiagnosticContainers(DataApiErrors)
     }
 
-    private val FirSession.generates: Boolean
-        get() = isCli || firIdeMode == DataApiFirIdeMode.ALL
+    private val FirSession.generates: Boolean get() = isCli || firIdeMode.generates
 
-    private val FirSession.checks: Boolean
-        get() = isCli || firIdeMode != DataApiFirIdeMode.NONE
+    private val FirSession.checks: Boolean get() = isCli || firIdeMode.checks
 
 }
 
