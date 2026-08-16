@@ -108,7 +108,7 @@ Apply the Gradle plugin next to one of the Kotlin plugins (`multiplatform`, `jvm
 ```kotlin
 plugins {
     kotlin("multiplatform") version "2.4.10"
-    id("com.xemantic.kotlin.data.api") version "0.1.2"
+    id("com.xemantic.kotlin.data.api") version "0.2.0"
 }
 ```
 
