@@ -10,7 +10,7 @@ dokkaPlugin = "2.2.0"
 mavenPublishPlugin = "0.37.0"
 jreleaserPlugin = "1.25.0"
 binaryCompatibilityValidatorPlugin = "0.18.1"
-xemanticConventionsPlugin = "0.7.0"
+xemanticConventionsPlugin = "0.7.1"
 kotlinCompileTesting = "0.13.0"
 
 [libraries]
