@@ -10,3 +10,23 @@ jobs:
     secrets: inherit
     with:
       gradle_args: build
+
+  # The compiler plugin has to compile against compilers other than the one this build uses, and
+  # that only breaks when the sources change — which is here. One compiler per IDE line keeps the
+  # signal without paying for the full matrix on every push; main runs all of them.
+  kotlinc_matrix:
+    uses: ./.github/workflows/kotlinc-matrix.yml
+    with:
+      scope: newest-per-line
+
+  compiler_variants:
+    needs: kotlinc_matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        kotlinc_version: ${{ fromJSON(needs.kotlinc_matrix.outputs.versions) }}
+    uses: xemantic/.github/.github/workflows/build-gradle.yml@main
+    secrets: inherit
+    with:
+      gradle_args: -PkotlincVersion=${{ matrix.kotlinc_version }} :xemantic-kotlin-data-api-compiler-plugin:test
+

@@ -23,3 +23,25 @@ jobs:
       gradle_args: -Pversion=${{ needs.extract_version.outputs.version }} build publishToMavenCentral jreleaserAnnounce --no-configuration-cache
       maven_central: true
       jreleaser: true
+
+  kotlinc_matrix:
+    uses: ./.github/workflows/kotlinc-matrix.yml
+
+  # Publishes the compiler plugin once more per compiler that cannot load the artifact above: the
+  # kotlinc each supported IDE analyzes with, which is what KEFS resolves, plus any stable Kotlin
+  # other than this build's, which is what DataApiGradlePlugin resolves for a consumer.
+  # The set is derived by the 'kotlincCompat' task into gradle/kotlinc-compat.json.
+  publish_compiler_variants:
+    needs: [ extract_version, build, kotlinc_matrix ]
+    strategy:
+      fail-fast: false
+      # one Maven Central deployment at a time: these publish into the same namespace as the
+      # release itself, and a failure here is a failure of a release job, discovered at release time
+      max-parallel: 1
+      matrix:
+        kotlinc_version: ${{ fromJSON(needs.kotlinc_matrix.outputs.versions) }}
+    uses: xemantic/.github/.github/workflows/build-gradle.yml@main
+    secrets: inherit
+    with:
+      gradle_args: -Pversion=${{ needs.extract_version.outputs.version }} -PkotlincVersion=${{ matrix.kotlinc_version }} :xemantic-kotlin-data-api-compiler-plugin:test :xemantic-kotlin-data-api-compiler-plugin:publishToMavenCentral --no-configuration-cache
+      maven_central: true

@@ -1,0 +1,17 @@
+# Bumps the actions used by this repository's workflows when a new *major* version is released.
+#
+# Actions here are pinned to a floating major tag (`actions/checkout@v7`), which the publisher moves
+# as they release patches — so patch and minor updates arrive on their own and only a new major,
+# which may break the workflow, needs a pull request to review. Dependabot preserves the precision
+# of the existing reference: `@v7` is considered up to date for every `v7.x.y` and only bumped to
+# `@v8` when a new major is released. (The previously used
+# `saadmk11/github-actions-version-updater` could not parse floating tags and pinned exact patch
+# releases instead — see xemantic/.github#231.)
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    commit-message:
+      prefix: "chore"

@@ -29,6 +29,7 @@ plugins {
     alias(libs.plugins.version.catalog.update)
     alias(libs.plugins.jreleaser)
     alias(libs.plugins.xemantic.conventions)
+    id("xemantic.data.api.kotlinc.compat")
 }
 
 group = "com.xemantic.kotlin"

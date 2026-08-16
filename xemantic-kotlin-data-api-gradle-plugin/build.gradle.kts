@@ -37,14 +37,24 @@ gradlePlugin {
     }
 }
 
+// The compiler plugin is published once per Kotlin compiler it was built against, so which
+// artifact a consumer needs depends on the Kotlin *they* build with. The set that exists is known
+// only at release time, so it is baked in here from the same file the release matrix reads.
+@Suppress("UNCHECKED_CAST")
+val kotlinCompilers: List<String> = groovy.json.JsonSlurper()
+    .parse(rootProject.layout.projectDirectory.file("gradle/kotlinc-compat.json").asFile)
+    .let { (it as Map<String, Any>)["kotlinCompilers"] as List<String> }
+
 // Generates a Version.kt holding the project version, so the plugin can reference the matching
 // compiler-plugin / annotations artifact coordinates of this build.
 val generateVersion = tasks.register("generateDataApiVersion") {
     description = "Generates Version.kt with the build version for resolving matching artifact coordinates"
     group = "build"
     val versionValue = version.toString()
+    val compilers = kotlinCompilers
     val outputDir = layout.buildDirectory.dir("generated/dataApiVersion/kotlin")
     inputs.property("version", versionValue)
+    inputs.property("kotlinCompilers", compilers)
     outputs.dir(outputDir)
     doLast {
         val file = outputDir.get()
@@ -55,6 +65,10 @@ val generateVersion = tasks.register("generateDataApiVersion") {
             package com.xemantic.kotlin.data.api.gradle
 
             internal const val DATA_API_VERSION: String = "$versionValue"
+
+            internal val SUPPORTED_KOTLIN_COMPILERS: Set<String> = setOf(
+            ${compilers.joinToString("\n") { "    \"$it\"," }}
+            )
             """.trimIndent() + "\n"
         )
     }
