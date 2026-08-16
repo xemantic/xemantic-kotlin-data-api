@@ -1,0 +1,38 @@
+# Turns gradle/kotlinc-compat.json into a job matrix, so the release, the main build and the PR
+# build all publish and verify against exactly the same set of compilers.
+name: Kotlin compiler matrix
+
+on:
+  workflow_call:
+    inputs:
+      scope:
+        description: '"all" for every compiler published for, "newest-per-line" for one per IDE line'
+        required: false
+        type: string
+        default: all
+    outputs:
+      versions:
+        description: 'JSON array of kotlinc versions'
+        value: ${{ jobs.compute.outputs.versions }}
+
+jobs:
+  compute:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.compute.outputs.versions }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: Compute matrix
+        id: compute
+        run: |
+          if [ "${{ inputs.scope }}" = "newest-per-line" ]; then
+            # entries are ordered newest first, so the head of each group is the current compiler
+            # of that IDE line — enough signal for a pull request, at a fraction of the jobs
+            versions=$(jq -c '[.ideCompilers | group_by(.ideLine)[] | .[0].kotlinc]' gradle/kotlinc-compat.json)
+          else
+            versions=$(jq -c '[.ideCompilers[].kotlinc] + .kotlinCompilers' gradle/kotlinc-compat.json)
+          fi
+          echo "Matrix: $versions"
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"

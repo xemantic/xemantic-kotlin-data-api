@@ -389,18 +389,63 @@ Out of the box, the IntelliJ K2 analyzer does not run this plugin, so code using
 
 This is not specific to `@DataApi`.
 IntelliJ loads only a fixed set of **bundled** K2 compiler plugins — kotlinx.serialization, all-open, no-arg, parcelize, Compose and a handful of others — and ignores every third-party one, however the build wires it.
-Turning that restriction off makes the whole DSL resolve:
+Behind that restriction is a real incompatibility: the IDE analyzes with the kotlinc bundled in its own build, not with the Kotlin the project compiles with, and the FIR declaration-generation API this plugin is built against is not stable between the two.
+
+### Kotlin External FIR Support
+
+[Kotlin External FIR Support](https://plugins.jetbrains.com/plugin/26480-kotlin-external-fir-support) (KEFS) closes exactly that gap.
+It recognises the compiler plugin jar the build already resolves and hands the IDE a build of the same plugin made against the IDE's own kotlinc — which this project publishes for that purpose.
+
+1. Install **Kotlin External FIR Support** from the JetBrains Marketplace.
+2. Open **Tools → Kotlin External FIR Support → Artifacts** and add a plugin with:
+   * **Name**: `xemantic-kotlin-data-api`
+   * **Coordinates**: `com.xemantic.kotlin:xemantic-kotlin-data-api-compiler-plugin`
+   * **Version matching**: `Exact`
+   * **Repositories**: `Maven Central`, which KEFS ships with
+3. Reload the Gradle project.
+
+The build is not touched at all, and the settings land in `.idea/kotlin-plugins.xml`, which can be checked in so that a whole team gets the same setup.
+KEFS also watches for exceptions thrown by a compiler plugin and offers to disable the culprit, so a mismatch degrades into a banner instead of a broken editor.
+
+An IDE build of the plugin accompanies every release, for these IDE compilers:
+
+<!-- kotlinc-compat:start -->
+| kotlinc           | IDE builds analyzing with it |
+|-------------------|------------------------------|
+| `2.4.20-ij262-43` | IntelliJ IDEA 2026.2.x, the patch in preparation |
+| `2.4.20-ij262-34` | IntelliJ IDEA 2026.2.1 |
+| `2.4.20-dev-6724` | IntelliJ IDEA 2026.2.0.1, IntelliJ IDEA 2026.2 |
+| `2.4.0-ij261-71`  | IntelliJ IDEA 2026.1.4, Android Studio on platform 261.26222.65 |
+| `2.4.0-ij261-64`  | IntelliJ IDEA 2026.1.3, Android Studio on platform 261.25134.95 |
+| `2.4.0-ij261-50`  | IntelliJ IDEA 2026.1.2, Android Studio on platform 261.24374.151 |
+| `2.4.0-ij261-32`  | IntelliJ IDEA 2026.1.1, Android Studio on platform 261.23567.138 |
+| `2.4.0-dev-2631`  | IntelliJ IDEA 2026.1, Android Studio on platform 261.22158.277 |
+<!-- kotlinc-compat:end -->
+
+The compiler an IDE analyzes with changes between patch releases, hence a row per patch rather than per version — the table is generated from [`gradle/kotlinc-compat.json`](gradle/kotlinc-compat.json), which a weekly job keeps in step with what JetBrains ships.
+Find the one your IDE runs with **Find Action → KEFS: Copy Kotlin IDE Version**.
+If it is not in that table, KEFS reports the plugin as *Not Found* in its diagnostics tool window — [open an issue](https://github.com/xemantic/xemantic-kotlin-data-api/issues) quoting the version, and use the registry switch below in the meantime.
+The same applies to `@DataApi` 0.1.3 and earlier, released before these artifacts existed.
+
+**Android Studio** runs the same compilers where it is built on the 261 platform, so it needs no separate artifacts and the table above covers it.
+Older Android Studio builds (platforms 252 and 253) cannot be supported by anyone: JetBrains no longer publishes the compilers they analyze with, so there is nothing to build a compatible plugin against.
+Android Studio also reports a placeholder compiler version of its own, which KEFS resolves through a table it maintains per release — so a very fresh Android Studio may need a KEFS update before it recognises anything.
+
+### The registry switch
+
+The IDE's restriction can also simply be turned off:
 
 > **Help → Find Action → Registry…** and uncheck `kotlin.k2.only.bundled.compiler.plugins.enabled`
 
 No restart is needed (the key declares `restartRequired="false"`); reload the Gradle project afterwards so the plugin jar is picked up.
 Verified against IntelliJ IDEA 2026.2 with Kotlin 2.4.10, where it takes the test module from several hundred red references to none.
 
-Three things are worth knowing before relying on it:
+It is the shorter path, and the only one available when working on this project itself, where the test module gets the compiler plugin as a project dependency that KEFS cannot recognise.
+Otherwise it is the worse of the two:
 
 * **It is a per-developer IDE setting**, not a project one, so it cannot be checked into a repository — every contributor has to flip it themselves.
 * **It is global, not per-plugin.** Unchecking it loads *every* non-bundled K2 compiler plugin, in every project that IDE opens, not just this one.
-* **The IDE analyzes with its own compiler.** IntelliJ 2026.2 resolves with kotlinc `2.4.20-dev-6724`, regardless of the Kotlin version the project builds with, and the FIR declaration-generation API this plugin uses is not stable across those versions. A different IDE build may therefore fail to run the plugin, and in the IDE that surfaces as an exception rather than a diagnostic.
+* **It hands the IDE the very jar the build resolved**, compiled against the project's Kotlin rather than the IDE's, so the incompatibility above is waved through rather than solved — and in the IDE it surfaces as an exception rather than a diagnostic.
 
 For that last case the plugin can be turned down in the IDE without being removed from the build:
 
@@ -420,6 +465,12 @@ Either way, the build is the authority: verify against `./gradlew build`, not th
 ## Supported platforms
 
 The annotations are a Kotlin Multiplatform library, and the compiler plugin runs on every backend, covering: JVM, JS, WasmJs, WasmWasi and all the [Kotlin/Native targets](https://kotlinlang.org/docs/native-target-support.html) of tiers 1–3 (Apple, Linux, Windows, Android Native).
+
+### Kotlin versions
+
+A compiler plugin is bound to the compiler internals it was built against, and those are not stable API — this one is built against the Kotlin in [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
+It keeps working on other Kotlin versions for as long as the parts of the FIR and IR API it uses have not moved, which is most of the time, and the Gradle plugin resolves a build matching your Kotlin whenever one has been published.
+If a Kotlin release does break it, that is a bug worth [reporting](https://github.com/xemantic/xemantic-kotlin-data-api/issues) — the fix is a published build for that compiler, and it needs no change on your side.
 
 ## Related work
 

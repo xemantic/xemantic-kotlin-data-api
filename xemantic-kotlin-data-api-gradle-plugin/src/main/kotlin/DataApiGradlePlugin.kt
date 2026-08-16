@@ -19,6 +19,7 @@ package com.xemantic.kotlin.data.api.gradle
 import org.gradle.api.Project
 import org.gradle.api.provider.Provider
 import org.jetbrains.kotlin.gradle.plugin.InternalSubpluginOption
+import org.jetbrains.kotlin.gradle.plugin.KotlinBasePlugin
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilerPluginSupportPlugin
 import org.jetbrains.kotlin.gradle.plugin.SubpluginArtifact
@@ -59,7 +60,15 @@ private val SUPPORTED_KOTLIN_PLUGIN_IDS = listOf(
 @Suppress("unused")
 class DataApiGradlePlugin : KotlinCompilerPluginSupportPlugin {
 
+    // the Kotlin the consumer compiles with, which is not necessarily the one this plugin was
+    // built against; read from the Kotlin plugin itself rather than from a version catalog or a
+    // property, because that is the version the compiler plugin will actually be loaded into
+    private var consumerKotlinVersion: String? = null
+
     override fun apply(target: Project) {
+        target.plugins.withType(KotlinBasePlugin::class.java) { kotlinPlugin ->
+            consumerKotlinVersion = kotlinPlugin.pluginVersion
+        }
         target.extensions
             .create(DATA_API_EXTENSION_NAME, DataApiExtension::class.java)
             .firIdeMode
@@ -90,10 +99,18 @@ class DataApiGradlePlugin : KotlinCompilerPluginSupportPlugin {
 
     override fun getCompilerPluginId(): String = DATA_API_PLUGIN_ID
 
+    // A compiler plugin is binary compatible only with the compiler it was built against, so when
+    // an artifact built against the consumer's own Kotlin was published, that is the one to use.
+    // Falling back to the plain artifact rather than failing is deliberate: the fallback is what
+    // every consumer got before this existed, and it works for as long as the FIR/IR API this
+    // plugin uses has not moved — which is most of the time, and never worth a hard failure.
     override fun getPluginArtifact(): SubpluginArtifact = SubpluginArtifact(
         groupId = GROUP,
         artifactId = COMPILER_PLUGIN_ARTIFACT,
-        version = DATA_API_VERSION
+        version = consumerKotlinVersion
+            ?.takeIf { it in SUPPORTED_KOTLIN_COMPILERS }
+            ?.let { "$it-$DATA_API_VERSION" }
+            ?: DATA_API_VERSION
     )
 
     override fun applyToCompilation(

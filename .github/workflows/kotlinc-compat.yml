@@ -1,0 +1,143 @@
+# Keeps the set of compilers this project publishes for in step with what JetBrains ships, and
+# warns when the compiler API the plugin is built on moves out from under it.
+#
+# Both jobs exist because their failure mode is silence: an IDE patch release ships a new kotlinc
+# and its users simply see the plugin not working, while a compiler API removal is only discovered
+# once an IDE carrying it reaches them.
+name: Kotlin compiler compatibility
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  derive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: ${{ vars.DEFAULT_JAVA_DISTRIBUTION || 'temurin' }}
+          java-version: ${{ vars.DEFAULT_JAVA_VERSION || '21' }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Derive the supported compilers
+        id: derive
+        run: |
+          cp gradle/kotlinc-compat.json /tmp/kotlinc-compat-before.json
+          ./gradlew kotlincCompat --derive --console=plain
+          if git diff --quiet -- gradle/kotlinc-compat.json README.md; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            jq -r '[.ideCompilers[].kotlinc] + .kotlinCompilers | .[]' /tmp/kotlinc-compat-before.json | sort > /tmp/before.txt
+            jq -r '[.ideCompilers[].kotlinc] + .kotlinCompilers | .[]' gradle/kotlinc-compat.json | sort > /tmp/after.txt
+            comm -13 /tmp/before.txt /tmp/after.txt > /tmp/added.txt
+            comm -23 /tmp/before.txt /tmp/after.txt > /tmp/removed.txt
+            echo "Added:"; cat /tmp/added.txt
+            echo "Removed:"; cat /tmp/removed.txt
+          fi
+
+      # A pull request opened with GITHUB_TOKEN does not trigger the PR workflow, so the check that
+      # would normally guard this change has to happen here instead of on the branch.
+      - name: Verify the plugin builds against every added compiler
+        if: steps.derive.outputs.changed == 'true'
+        run: |
+          echo "| kotlinc | builds |" > /tmp/report.md
+          echo "|---------|--------|" >> /tmp/report.md
+          while read -r version; do
+            [ -z "$version" ] && continue
+            if ./gradlew -PkotlincVersion="$version" :xemantic-kotlin-data-api-compiler-plugin:test --console=plain; then
+              echo "| \`$version\` | yes |" >> /tmp/report.md
+            else
+              echo "| \`$version\` | **no** |" >> /tmp/report.md
+            fi
+          done < /tmp/added.txt
+          cat /tmp/report.md
+
+      - name: Open a pull request
+        if: steps.derive.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B chore/kotlinc-compat
+          git add gradle/kotlinc-compat.json README.md
+          git commit -m "Update the set of Kotlin compilers published for"
+          git push --force origin chore/kotlinc-compat
+          if [ -z "$(gh pr list --head chore/kotlinc-compat --state open --json number --jq '.[].number')" ]; then
+            {
+              echo "JetBrains shipped IDE builds analyzing with compilers this project does not publish for yet."
+              echo
+              echo "**Added**"; echo '```'; cat /tmp/added.txt; echo '```'
+              echo "**Removed**"; echo '```'; cat /tmp/removed.txt; echo '```'
+              echo
+              echo "Verified in the scheduled run, since a token-opened pull request runs no checks:"
+              echo
+              cat /tmp/report.md
+              echo
+              echo "A compiler that does not build needs a per-version source variant before it can be published;"
+              echo "removing it from the list is only correct when no supported IDE uses it."
+            } > /tmp/body.md
+            gh pr create --title "Update the set of Kotlin compilers published for" --body-file /tmp/body.md
+          fi
+
+  # The compiler of the IDE *after* the ones supported today. It is expected to break eventually —
+  # the point is to learn about it months before an IDE carrying it reaches users.
+  early_warning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: ${{ vars.DEFAULT_JAVA_DISTRIBUTION || 'temurin' }}
+          java-version: ${{ vars.DEFAULT_JAVA_VERSION || '21' }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Resolve the compiler of the next IDE
+        id: next
+        run: |
+          version=$(curl -fsSL https://raw.githubusercontent.com/JetBrains/intellij-community/master/plugins/kotlin/util/project-model-updater/resources/model.properties \
+            | sed -n 's/^kotlincVersion=//p')
+          echo "Next IDE compiler: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build against it
+        id: build
+        continue-on-error: true
+        run: ./gradlew -PkotlincVersion=${{ steps.next.outputs.version }} :xemantic-kotlin-data-api-compiler-plugin:test --console=plain
+
+      - name: Report a break
+        if: steps.build.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          title="Compiler plugin does not build against ${{ steps.next.outputs.version }}"
+          if [ -z "$(gh issue list --state open --search "$title in:title" --json number --jq '.[].number')" ]; then
+            gh issue create --title "$title" --body "$(cat <<EOF
+          \`${{ steps.next.outputs.version }}\` is the kotlinc on intellij-community master, i.e. the compiler a future
+          IntelliJ IDEA will analyze with. The plugin no longer builds against it, so that IDE will not be supportable
+          until the divergence is handled — see the run log for what moved:
+          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          This is early warning, not breakage: nothing shipped is affected until an IDE with this compiler is released.
+          EOF
+          )"
+          fi

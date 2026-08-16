@@ -52,5 +52,10 @@ gradlePlugin {
             implementationClass =
                 "com.xemantic.kotlin.data.api.buildlogic.XemanticDataApiConventionPlugin"
         }
+        register("KotlinCompilerCompatPlugin") {
+            id = "xemantic.data.api.kotlinc.compat"
+            implementationClass =
+                "com.xemantic.kotlin.data.api.buildlogic.KotlinCompilerCompatPlugin"
+        }
     }
 }
