@@ -5,8 +5,9 @@ build/
 !**/src/test/**/build/
 
 ### IntelliJ IDEA ###
-/.idea/
+/.idea/*
 !/.idea/copyright/
+!/.idea/kotlin-plugins.xml
 *.iws
 *.iml
 *.ipr
