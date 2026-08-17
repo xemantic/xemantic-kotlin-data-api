@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="KotlinPluginsSettings">
+    <option name="repositories">
+      <map>
+        <entry key="Central" value="https://repo1.maven.org/maven2;URL" />
+      </map>
+    </option>
+    <option name="plugins">
+      <map>
+        <entry key="xemantic-kotlin-data-api" value="EXACT;true;false;com.xemantic.kotlin:xemantic-kotlin-data-api-compiler-plugin" />
+      </map>
+    </option>
+    <option name="pluginsRepos">
+      <map>
+        <entry key="xemantic-kotlin-data-api" value="Central" />
+      </map>
+    </option>
+  </component>
+</project>
