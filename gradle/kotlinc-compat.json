@@ -6,7 +6,7 @@
   ],
   "ideCompilers": [
     {
-      "kotlinc": "2.4.20-ij262-43",
+      "kotlinc": "2.4.20-ij262-52",
       "ideLine": "262",
       "ides": [
         "IntelliJ IDEA 2026.2.x, the patch in preparation"
@@ -31,6 +31,7 @@
       "kotlinc": "2.4.0-ij261-71",
       "ideLine": "261",
       "ides": [
+        "IntelliJ IDEA 2026.1.5",
         "IntelliJ IDEA 2026.1.4",
         "Android Studio on platform 261.26222.65"
       ]
