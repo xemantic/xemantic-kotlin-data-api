@@ -412,8 +412,8 @@ An IDE build of the plugin accompanies every release, for these IDE compilers:
 <!-- kotlinc-compat:start -->
 | kotlinc           | IDE builds analyzing with it |
 |-------------------|------------------------------|
-| `2.4.20-ij262-52` | IntelliJ IDEA 2026.2.x, the patch in preparation |
-| `2.4.20-ij262-34` | IntelliJ IDEA 2026.2.1 |
+| `2.4.20-ij262-52` | IntelliJ IDEA 2026.2.3, IntelliJ IDEA 2026.2.2, Android Studio on platform 262.10315.125 |
+| `2.4.20-ij262-34` | IntelliJ IDEA 2026.2.1, Android Studio on platform 262.9437.185 |
 | `2.4.20-dev-6724` | IntelliJ IDEA 2026.2.0.1, IntelliJ IDEA 2026.2 |
 | `2.4.0-ij261-71`  | IntelliJ IDEA 2026.1.5, IntelliJ IDEA 2026.1.4, Android Studio on platform 261.26222.65 |
 | `2.4.0-ij261-64`  | IntelliJ IDEA 2026.1.3, Android Studio on platform 261.25134.95 |
